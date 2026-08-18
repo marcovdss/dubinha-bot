@@ -99,7 +99,7 @@ function createFFmpegStream(inputUrl) {
  */
 function extractYouTubeStreamUrl(targetUrl) {
   return new Promise((resolve, reject) => {
-    const clients = ['android', 'ios', 'tv_embedded', 'mweb'];
+    const clients = ['android', 'tv_embedded', 'mweb', 'web'];
     let lastErr = null;
 
     const tryNext = (index) => {
@@ -110,18 +110,21 @@ function extractYouTubeStreamUrl(targetUrl) {
       const client = clients[index];
       const args = [
         '-f', 'ba/b',
+        '--no-warnings',
         '--extractor-args', `youtube:player_client=${client}`,
         '-g',
         targetUrl
       ];
 
       execFile(ytDlpPath, args, { timeout: 15000 }, (error, stdout) => {
-        if (error || !stdout.trim()) {
-          lastErr = error;
-          return tryNext(index + 1);
+        if (!error && stdout && stdout.trim()) {
+          const lines = stdout.trim().split('\n').map(l => l.trim()).filter(l => l.startsWith('http'));
+          if (lines.length > 0) {
+            return resolve(lines[lines.length - 1]);
+          }
         }
-        const lines = stdout.trim().split('\n').map(l => l.trim()).filter(Boolean);
-        resolve(lines[lines.length - 1]);
+        lastErr = error || new Error('URL de áudio inválida');
+        tryNext(index + 1);
       });
     };
 
@@ -417,9 +420,11 @@ export async function addMusicToQueue(interaction, query) {
         activeProcess: null
       };
 
-      player.on(AudioPlayerStatus.Idle, () => {
-        queue.songs.shift(); // Remove a faixa que terminou
-        playNextInQueue(guildId, true);
+      player.on(AudioPlayerStatus.Idle, (oldState) => {
+        if (oldState.status === AudioPlayerStatus.Playing || oldState.status === AudioPlayerStatus.Buffering) {
+          queue.songs.shift(); // Remove a faixa que terminou
+          playNextInQueue(guildId, true);
+        }
       });
 
       player.on('error', (error) => {
