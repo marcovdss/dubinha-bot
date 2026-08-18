@@ -12,6 +12,9 @@ process.on('unhandledRejection', (reason, promise) => {
 });
 
 process.on('uncaughtException', (error) => {
+  if (error.code === 'EPIPE' || error.code === 'ERR_STREAM_DESTROYED') {
+    return; // Ignora EPIPE inofensivo de encerramento de pipe de áudio
+  }
   console.error('💥 [Uncaught Exception]:', error);
 });
 

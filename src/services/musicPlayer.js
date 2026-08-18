@@ -33,7 +33,7 @@ export const ALLOWED_TEXT_CHANNEL_ID = '907283294700326932';
 // Mapa de filas ativas por Guild ID
 const queues = new Map();
 
-// Controle de inicialização do SoundCloud Client (fallback apenas para buscas de texto)
+// Controle de inicialização do SoundCloud Client (fallback)
 let soundcloudReady = false;
 
 async function ensureSoundCloud() {
@@ -104,10 +104,17 @@ function createFFmpegStream(inputUrlOrStream) {
   const ffProcess = spawn(ffmpegExecutable, ffArgs);
 
   if (isPipe) {
-    inputUrlOrStream.pipe(ffProcess.stdin);
-    inputUrlOrStream.on('error', (err) => {
-      console.warn('[Piped Stream Error]:', err.message);
+    ffProcess.stdin.on('error', (err) => {
+      if (err.code !== 'EPIPE' && err.code !== 'ERR_STREAM_DESTROYED') {
+        console.warn('[FFmpeg stdin error]:', err.message);
+      }
     });
+    inputUrlOrStream.on('error', (err) => {
+      if (err.code !== 'EPIPE' && err.code !== 'ERR_STREAM_DESTROYED') {
+        console.warn('[Piped Stream Error]:', err.message);
+      }
+    });
+    inputUrlOrStream.pipe(ffProcess.stdin);
   }
 
   return ffProcess;
@@ -120,7 +127,7 @@ function createFFmpegStream(inputUrlOrStream) {
  */
 function extractYouTubeStreamUrl(targetUrl) {
   return new Promise((resolve, reject) => {
-    const clients = ['android', 'mweb', 'web'];
+    const clients = ['android', 'mweb', 'ios', 'web'];
     let lastErr = null;
 
     const tryNext = (index) => {
@@ -133,6 +140,7 @@ function extractYouTubeStreamUrl(targetUrl) {
         '-f', 'ba/b',
         '--no-warnings',
         '--no-check-certificates',
+        '--force-ipv4',
         '--extractor-args', `youtube:player_client=${client}`,
         '-g',
         targetUrl
@@ -180,7 +188,7 @@ async function resolveTracks(query) {
     }];
   }
 
-  // 3. Spotify (Músicas, Álbuns, Playlists) - Busca EXCLUSIVA da faixa original de estúdio do link
+  // 3. Spotify (Músicas, Álbuns, Playlists)
   if (query.includes('spotify.com')) {
     console.log(`🟢 [Music Player] Processando link do Spotify: ${query}`);
     if (query.includes('/track/')) {
@@ -264,19 +272,18 @@ async function getTrackAudioProcess(track) {
     };
   }
 
-  // 3. Link do Spotify ou Link Direto do YouTube: Busca ESTRITAMENTE a gravação original de estúdio
+  // 3. Link do Spotify ou Link Direto do YouTube
   if (track.isSpotify || track.isYouTube) {
+    let officialTitle = track.title;
     try {
       let ytTargetUrl = track.ytUrl;
-      let officialTitle = track.title;
 
       if (!ytTargetUrl && searchQuery) {
         const searchRes = await yts(`${searchQuery} Official Audio`);
         if (searchRes && searchRes.videos && searchRes.videos.length > 0) {
-          // Filtra remixes ou covers para garantir 100% a versão original de estúdio do Spotify
+          const originalLower = searchQuery.toLowerCase();
           const bestVideo = searchRes.videos.find(v => {
             const t = v.title.toLowerCase();
-            const originalLower = searchQuery.toLowerCase();
             if (!originalLower.includes('remix') && t.includes('remix')) return false;
             if (!originalLower.includes('cover') && t.includes('cover')) return false;
             if (!originalLower.includes('type beat') && t.includes('type beat')) return false;
@@ -299,13 +306,41 @@ async function getTrackAudioProcess(track) {
         }
       }
     } catch (err) {
-      console.warn(`[Music Player] Erro ao extrair áudio oficial do link (${err.message})`);
+      console.warn(`[Music Player] YouTube falhou para "${track.title}" (${err.message}), buscando correspondência oficial no SoundCloud...`);
     }
 
-    throw new Error(`Não foi possível carregar a versão oficial da faixa do Spotify: "${track.title}"`);
+    // Se o YouTube falhar no cloud IP, busca a versão oficial estrita no SoundCloud (filtrando remixes indesejados)
+    try {
+      await ensureSoundCloud();
+      const scResults = await play.search(searchQuery, { source: { soundcloud: 'tracks' }, limit: 5 });
+      const targetLower = searchQuery.toLowerCase();
+      const isRemixOriginal = targetLower.includes('remix');
+
+      const matchedTrack = scResults.find(t => {
+        const tName = (t.name || '').toLowerCase();
+        if (!isRemixOriginal && (tName.includes('remix') || tName.includes('bootleg') || tName.includes('edit') || tName.includes('slowed') || tName.includes('reverb'))) {
+          return false;
+        }
+        return true;
+      }) || (isRemixOriginal ? scResults[0] : null);
+
+      if (matchedTrack) {
+        const scStream = await play.stream(matchedTrack.url);
+        if (scStream && scStream.stream) {
+          return {
+            process: createFFmpegStream(scStream.stream),
+            title: matchedTrack.name || officialTitle
+          };
+        }
+      }
+    } catch (scErr) {
+      console.warn('[Music Player] Fallback SoundCloud falhou:', scErr.message);
+    }
+
+    throw new Error(`Não foi possível carregar a versão oficial da faixa: "${track.title}"`);
   }
 
-  // 4. Busca Genérica de Texto: tenta YouTube primeiro, com fallback para SoundCloud
+  // 4. Busca Genérica de Texto
   try {
     let ytTargetUrl = track.ytUrl;
     let officialTitle = track.title;
@@ -333,7 +368,7 @@ async function getTrackAudioProcess(track) {
     console.warn(`[Music Player] YouTube falhou na busca genérica (${ytErr.message}), tentando SoundCloud...`);
   }
 
-  // Fallback para SoundCloud apenas se for busca genérica de texto
+  // Fallback para SoundCloud para buscas de texto
   try {
     await ensureSoundCloud();
     const scResults = await play.search(searchQuery, { source: { soundcloud: 'tracks' }, limit: 3 });
