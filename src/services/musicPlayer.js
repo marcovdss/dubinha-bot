@@ -11,6 +11,9 @@ import { ActionRowBuilder, ButtonBuilder, ButtonStyle } from 'discord.js';
 import play from 'play-dl';
 import ffmpegPath from 'ffmpeg-static';
 import { spawn } from 'child_process';
+import spotifyUrlInfo from 'spotify-url-info';
+
+const { getTracks, getPreview } = spotifyUrlInfo(fetch);
 
 // Canal de texto exclusivo onde os comandos de música são permitidos (#🔊-musica)
 export const ALLOWED_TEXT_CHANNEL_ID = '907283294700326932';
@@ -82,14 +85,14 @@ function createRadioProcess(url) {
 }
 
 /**
- * Busca e extrai stream de áudio via SoundCloud ou Web Stream
+ * Busca e extrai stream de áudio via Multi-Provedores (Spotify, SoundCloud, YouTube, Web)
  * @param {string} query
- * @returns {Promise<Array<{ title: string, streamUrl?: string, soundCloudUrl?: string, isRadio?: boolean, radioUrl?: string, isDirect?: boolean }>>}
+ * @returns {Promise<Array<{ title: string, searchQuery?: string, streamUrl?: string, soundCloudUrl?: string, isRadio?: boolean, radioUrl?: string, isDirect?: boolean, isYouTube?: boolean, ytUrl?: string }>>}
  */
 async function resolveTracks(query) {
   const lowerQuery = query.toLowerCase().trim();
 
-  // 1. Rádio / Preset temático
+  // 1. Rádios / Presets temáticos
   if (PRESET_STREAMS[lowerQuery]) {
     return [{
       title: PRESET_STREAMS[lowerQuery].title,
@@ -98,8 +101,8 @@ async function resolveTracks(query) {
     }];
   }
 
-  // 2. Link direto de áudio (MP3 / OGG)
-  if (/^https?:\/\/.+\.(?:mp3|ogg|wav|m3u8)$/i.test(query)) {
+  // 2. Links Diretos de Áudio (.mp3, .ogg, .wav, .m3u8, etc.)
+  if (/^https?:\/\/.+\.(?:mp3|ogg|wav|m3u8|flac)$/i.test(query)) {
     return [{
       title: 'Áudio Direto da Web',
       isDirect: true,
@@ -107,11 +110,42 @@ async function resolveTracks(query) {
     }];
   }
 
+  // 3. Spotify (Faixas, Álbuns, Playlists)
+  if (query.includes('spotify.com')) {
+    try {
+      console.log(`🟢 [Music Player] Detectado link do Spotify: ${query}`);
+      if (query.includes('/track/')) {
+        const preview = await getPreview(query);
+        const title = `${preview.artist} - ${preview.title}`;
+        return [{
+          title: title,
+          searchQuery: title
+        }];
+      } else if (query.includes('/playlist/') || query.includes('/album/')) {
+        const tracks = await getTracks(query);
+        if (tracks && tracks.length > 0) {
+          return tracks.map(t => {
+            const trackArtist = t.artists?.[0]?.name || t.artist || '';
+            const trackName = t.name || t.title || 'Música';
+            const fullTitle = trackArtist ? `${trackArtist} - ${trackName}` : trackName;
+            return {
+              title: fullTitle,
+              searchQuery: fullTitle
+            };
+          });
+        }
+      }
+    } catch (spErr) {
+      console.warn('[Music Player] Erro ao resolver Spotify:', spErr.message);
+    }
+  }
+
   await ensureSoundCloud();
 
-  // 3. Playlist do SoundCloud
+  // 4. SoundCloud (Playlists completas)
   if (query.includes('soundcloud.com') && query.includes('/sets/')) {
     try {
+      console.log(`🟠 [Music Player] Detectada playlist SoundCloud: ${query}`);
       const playlist = await play.soundcloud(query);
       const tracks = await playlist.all_tracks();
       return tracks.map(t => ({
@@ -123,7 +157,23 @@ async function resolveTracks(query) {
     }
   }
 
-  // 4. Busca de Faixa individual no SoundCloud
+  // 5. YouTube direto (Links de vídeo)
+  if (play.yt_validate(query) === 'video') {
+    try {
+      console.log(`🔴 [Music Player] Detectado vídeo do YouTube: ${query}`);
+      const info = await play.video_info(query);
+      return [{
+        title: info?.video_details?.title || 'Vídeo YouTube',
+        isYouTube: true,
+        ytUrl: query,
+        searchQuery: info?.video_details?.title || query
+      }];
+    } catch (ytErr) {
+      console.warn('[Music Player] YouTube video info falhou:', ytErr.message);
+    }
+  }
+
+  // 6. Busca Universal de Faixa no SoundCloud (Padrão de Alta Fidelidade)
   try {
     const scResults = await play.search(query, { source: { soundcloud: 'tracks' }, limit: 1 });
     if (scResults && scResults.length > 0) {
@@ -168,23 +218,42 @@ async function playNextInQueue(guildId) {
       queue.radioProcess = null;
     }
 
+    // 1. Rádio Web Contínua
     if (currentTrack.isRadio) {
       queue.radioProcess = createRadioProcess(currentTrack.radioUrl);
       audioResource = createAudioResource(queue.radioProcess.stdout, {
         inputType: StreamType.Raw,
         inlineVolume: true
       });
-    } else if (currentTrack.isDirect) {
+    }
+    // 2. Link Direto Web
+    else if (currentTrack.isDirect) {
       audioResource = createAudioResource(currentTrack.streamUrl, {
         inputType: StreamType.Arbitrary,
         inlineVolume: true
       });
-    } else {
+    }
+    // 3. URL direta do SoundCloud
+    else if (currentTrack.soundCloudUrl) {
       const scStream = await play.stream(currentTrack.soundCloudUrl);
       audioResource = createAudioResource(scStream.stream, {
         inputType: scStream.type,
         inlineVolume: true
       });
+    }
+    // 4. Faixa com searchQuery (Spotify ou termo) -> busca e toca no SoundCloud
+    else if (currentTrack.searchQuery) {
+      await ensureSoundCloud();
+      const scResults = await play.search(currentTrack.searchQuery, { source: { soundcloud: 'tracks' }, limit: 1 });
+      if (scResults && scResults.length > 0) {
+        const scStream = await play.stream(scResults[0].url);
+        audioResource = createAudioResource(scStream.stream, {
+          inputType: scStream.type,
+          inlineVolume: true
+        });
+      } else {
+        throw new Error(`Áudio de "${currentTrack.title}" não encontrado`);
+      }
     }
 
     if (audioResource.volume) {
