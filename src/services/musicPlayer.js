@@ -285,8 +285,9 @@ async function getTrackAudioProcess(track) {
 /**
  * Toca a próxima música da fila da Guild
  * @param {string} guildId
+ * @param {boolean} isAutoAdvance
  */
-async function playNextInQueue(guildId) {
+async function playNextInQueue(guildId, isAutoAdvance = false) {
   const queue = queues.get(guildId);
   if (!queue) return;
 
@@ -310,7 +311,7 @@ async function playNextInQueue(guildId) {
 
     const { process: audioProcess, title: finalTitle } = await getTrackAudioProcess(currentTrack);
     queue.activeProcess = audioProcess;
-    currentTrack.title = finalTitle;
+    currentTrack.title = finalTitle; // Guarda o nome REAL da faixa reproduzida
 
     audioProcess.on('error', (err) => {
       console.error('[FFmpeg Process Error]:', err.message);
@@ -328,10 +329,18 @@ async function playNextInQueue(guildId) {
     queue.player.play(audioResource);
     queue.isPlaying = true;
     queue.isPaused = false;
+
+    // Se for avanço automático para a próxima música da fila, avisa no chat
+    if (isAutoAdvance && queue.textChannel) {
+      queue.textChannel.send({
+        content: `🎶 Tocando agora: **${finalTitle}**`,
+        components: [createMusicControlRow(false)]
+      }).catch(() => {});
+    }
   } catch (err) {
     console.error(`💥 [Music Player Error ao tocar faixa]:`, err.message);
     queue.songs.shift();
-    playNextInQueue(guildId);
+    await playNextInQueue(guildId, isAutoAdvance);
   }
 }
 
@@ -400,6 +409,7 @@ export async function addMusicToQueue(interaction, query) {
         connection,
         player,
         voiceChannel,
+        textChannel: interaction.channel,
         songs: [],
         currentTrack: null,
         isPlaying: false,
@@ -409,16 +419,18 @@ export async function addMusicToQueue(interaction, query) {
 
       player.on(AudioPlayerStatus.Idle, () => {
         queue.songs.shift(); // Remove a faixa que terminou
-        playNextInQueue(guildId);
+        playNextInQueue(guildId, true);
       });
 
       player.on('error', (error) => {
         console.error('[Player Error]:', error.message);
         queue.songs.shift();
-        playNextInQueue(guildId);
+        playNextInQueue(guildId, true);
       });
 
       queues.set(guildId, queue);
+    } else {
+      queue.textChannel = interaction.channel;
     }
 
     const isFirst = queue.songs.length === 0 && !queue.isPlaying;
@@ -427,16 +439,17 @@ export async function addMusicToQueue(interaction, query) {
     queue.songs.push(...tracks);
 
     if (isFirst) {
-      playNextInQueue(guildId);
+      await playNextInQueue(guildId, false);
+      const realPlayingTitle = queue.currentTrack?.title || tracks[0].title;
       if (tracks.length > 1) {
         return {
           success: true,
-          message: `🎶 Tocando agora: **${tracks[0].title}** (+ ${tracks.length - 1} faixas adicionadas da playlist)`
+          message: `🎶 Tocando agora: **${realPlayingTitle}** (+ ${tracks.length - 1} faixas adicionadas da playlist)`
         };
       }
       return {
         success: true,
-        message: `🎶 Tocando agora: **${tracks[0].title}**`
+        message: `🎶 Tocando agora: **${realPlayingTitle}**`
       };
     } else {
       if (tracks.length > 1) {
