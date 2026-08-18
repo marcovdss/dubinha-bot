@@ -7,18 +7,9 @@ import {
   entersState,
   StreamType
 } from '@discordjs/voice';
-import { execFile } from 'child_process';
-import yts from 'yt-search';
-import path from 'path';
-import fs from 'fs';
-import { fileURLToPath } from 'url';
-
-const __filename = fileURLToPath(import.meta.url);
-const __dirname = path.dirname(__filename);
-
-const isWindows = process.platform === 'win32';
-const localWinBin = path.resolve(__dirname, '../../bin/yt-dlp.exe');
-const ytDlpPath = (isWindows && fs.existsSync(localWinBin)) ? localWinBin : 'yt-dlp';
+import play from 'play-dl';
+import ffmpegPath from 'ffmpeg-static';
+import { spawn } from 'child_process';
 
 // Canal de texto exclusivo onde os comandos de música são permitidos (#🔊-musica)
 export const ALLOWED_TEXT_CHANNEL_ID = '907283294700326932';
@@ -26,10 +17,28 @@ export const ALLOWED_TEXT_CHANNEL_ID = '907283294700326932';
 // Mapa de conexões ativas por Guild ID
 const activeSessions = new Map();
 
-// Rádios temáticas diretas
+// Controle de inicialização do SoundCloud Client
+let soundcloudReady = false;
+
+async function ensureSoundCloud() {
+  if (!soundcloudReady) {
+    try {
+      const clientId = await play.getFreeClientID();
+      if (clientId) {
+        await play.setToken({ soundcloud: { client_id: clientId } });
+        soundcloudReady = true;
+        console.log('🎵 [Music Player] SoundCloud Engine inicializado com sucesso!');
+      }
+    } catch (err) {
+      console.warn('[Music Player] Erro ao obter SoundCloud ClientID:', err.message);
+    }
+  }
+}
+
+// Rádios temáticas diretas de alta fidelidade
 const PRESET_STREAMS = {
   lofi: {
-    title: 'Lofi Hip Hop Chill Beats',
+    title: 'Lofi Hip Hop Chill Beats (24/7)',
     url: 'https://stream.zeno.fm/f3wvbbqmdg8uv'
   },
   sertanejo: {
@@ -51,60 +60,69 @@ const PRESET_STREAMS = {
 };
 
 /**
- * Extrai o link de áudio e título do YouTube usando yt-search + rotação de cliente móvel (Android/iOS)
- * @param {string} queryOrUrl
- * @returns {Promise<{ streamUrl: string, title: string }>}
+ * Cria um stream contínuo e ininterrupto para web rádios via FFmpeg com auto-reconnect
+ * @param {string} url
+ * @returns {import('child_process').ChildProcess}
  */
-async function extractYouTubeInfo(queryOrUrl) {
-  let targetUrl = queryOrUrl;
-  let songTitle = queryOrUrl;
+function createRadioProcess(url) {
+  const ffArgs = [
+    '-reconnect', '1',
+    '-reconnect_streamed', '1',
+    '-reconnect_delay_max', '5',
+    '-i', url,
+    '-analyzeduration', '0',
+    '-loglevel', '0',
+    '-f', 's16le',
+    '-ar', '48000',
+    '-ac', '2',
+    'pipe:1'
+  ];
+  return spawn(ffmpegPath, ffArgs);
+}
 
-  // 1. Se for busca por texto, resolve a URL real via yt-search (zero bloqueio de bot do YouTube)
-  if (!queryOrUrl.startsWith('http://') && !queryOrUrl.startsWith('https://')) {
+/**
+ * Busca e extrai stream de áudio via SoundCloud ou YouTube
+ * @param {string} query
+ * @returns {Promise<{ stream: any, type: string, title: string }>}
+ */
+async function fetchMusicStream(query) {
+  await ensureSoundCloud();
+
+  // 1. Busca no SoundCloud (100% de estabilidade e sem bloqueios de IP)
+  try {
+    console.log(`🔍 [Music Player] Buscando "${query}" no catálogo SoundCloud...`);
+    const scResults = await play.search(query, { source: { soundcloud: 'tracks' }, limit: 1 });
+    if (scResults && scResults.length > 0) {
+      const track = scResults[0];
+      console.log(`✅ [Music Player] Encontrado no SoundCloud: "${track.name}"`);
+      const scStream = await play.stream(track.url);
+      return {
+        stream: scStream.stream,
+        type: scStream.type,
+        title: track.name || query
+      };
+    }
+  } catch (scErr) {
+    console.warn('[Music Player] Busca SoundCloud falhou:', scErr.message);
+  }
+
+  // 2. Se for link direto do YouTube ou busca direta
+  if (play.yt_validate(query) === 'video') {
     try {
-      const searchRes = await yts(queryOrUrl);
-      if (searchRes && searchRes.videos.length > 0) {
-        targetUrl = searchRes.videos[0].url;
-        songTitle = searchRes.videos[0].title;
-      }
-    } catch (searchErr) {
-      console.warn('[Music Player] Erro no yt-search:', searchErr.message);
+      console.log(`🔍 [Music Player] Extraindo stream do YouTube: ${query}...`);
+      const ytStream = await play.stream(query);
+      const ytInfo = await play.video_info(query);
+      return {
+        stream: ytStream.stream,
+        type: ytStream.type,
+        title: ytInfo?.video_details?.title || 'YouTube Audio'
+      };
+    } catch (ytErr) {
+      console.warn('[Music Player] Stream YouTube direto falhou:', ytErr.message);
     }
   }
 
-  // 2. Extração direta de áudio com rotação de clientes móveis (Android, iOS, TV)
-  const clientProfiles = ['android', 'ios', 'tv_embedded', 'mweb'];
-  let lastError = null;
-
-  for (const clientProfile of clientProfiles) {
-    try {
-      const args = [
-        '-f', 'ba/b',
-        '--extractor-args', `youtube:player_client=${clientProfile}`,
-        '--print', '%(title)s',
-        '-g',
-        targetUrl
-      ];
-
-      const result = await new Promise((resolve, reject) => {
-        execFile(ytDlpPath, args, { timeout: 15000 }, (error, stdout) => {
-          if (error) return reject(error);
-          const lines = stdout.trim().split('\n').map(l => l.trim()).filter(Boolean);
-          if (lines.length === 0) return reject(new Error('Nenhum stream retornado'));
-          resolve({
-            title: songTitle !== queryOrUrl ? songTitle : lines[0],
-            streamUrl: lines[lines.length - 1]
-          });
-        });
-      });
-
-      return result;
-    } catch (err) {
-      lastError = err;
-    }
-  }
-
-  throw lastError || new Error('Não foi possível extrair o áudio do YouTube');
+  throw new Error('Música não encontrada nos catálogos de streaming');
 }
 
 /**
@@ -144,33 +162,46 @@ export async function playMusic(interaction, query) {
 
   try {
     let songTitle = query;
-    let inputAudioUrl = null;
+    let audioResource = null;
+    let radioProcess = null;
+
     const lowerQuery = query.toLowerCase().trim();
 
-    // 1. Preset direto de rádio/gênero
+    // Caso A: Rádio / Estilo predefinido (Lofi, Sertanejo, Rock, Forró, Anime)
     if (PRESET_STREAMS[lowerQuery]) {
       songTitle = PRESET_STREAMS[lowerQuery].title;
-      inputAudioUrl = PRESET_STREAMS[lowerQuery].url;
+      radioProcess = createRadioProcess(PRESET_STREAMS[lowerQuery].url);
+      audioResource = createAudioResource(radioProcess.stdout, {
+        inputType: StreamType.Raw,
+        inlineVolume: true
+      });
     }
-    // 2. Link direto de áudio (MP3 / OGG)
+    // Caso B: Link direto de arquivo de áudio (.mp3, .ogg, .wav)
     else if (/^https?:\/\/.+\.(?:mp3|ogg|wav|m3u8)$/i.test(query)) {
       songTitle = 'Áudio Web';
-      inputAudioUrl = query;
+      audioResource = createAudioResource(query, {
+        inputType: StreamType.Arbitrary,
+        inlineVolume: true
+      });
     }
-    // 3. YouTube (Links ou Busca)
+    // Caso C: Busca por nome de música ou artista (Tim Maia, Evidências, etc.)
     else {
-      console.log(`🎬 [Music Player] Extraindo áudio do YouTube para: "${query}"...`);
-      const ytInfo = await extractYouTubeInfo(query);
-      songTitle = ytInfo.title;
-      inputAudioUrl = ytInfo.streamUrl;
-      console.log(`✅ [Music Player] Stream URL obtida com sucesso: "${songTitle}"`);
+      const musicData = await fetchMusicStream(query);
+      songTitle = musicData.title;
+      audioResource = createAudioResource(musicData.stream, {
+        inputType: musicData.type,
+        inlineVolume: true
+      });
     }
 
-    if (!inputAudioUrl) {
-      return {
-        success: false,
-        message: 'não consegui encontrar o áudio dessa música meu vei'
-      };
+    if (audioResource.volume) {
+      audioResource.volume.setVolume(0.85);
+    }
+
+    // Se já havia uma rádio tocando na mesma guilda, encerra o processo anterior
+    const prevSession = activeSessions.get(guildId);
+    if (prevSession && prevSession.radioProcess) {
+      try { prevSession.radioProcess.kill(); } catch {}
     }
 
     // Conecta à sala de voz do membro
@@ -185,15 +216,6 @@ export async function playMusic(interaction, query) {
     // Aguarda o handshake UDP do Discord estar 100% pronto antes de transmitir
     await entersState(connection, VoiceConnectionStatus.Ready, 20_000);
 
-    const audioResource = createAudioResource(inputAudioUrl, {
-      inputType: StreamType.Arbitrary,
-      inlineVolume: true
-    });
-
-    if (audioResource.volume) {
-      audioResource.volume.setVolume(0.85);
-    }
-
     const player = createAudioPlayer();
     player.play(audioResource);
     connection.subscribe(player);
@@ -201,16 +223,19 @@ export async function playMusic(interaction, query) {
     activeSessions.set(guildId, {
       connection,
       player,
+      radioProcess,
       channel: voiceChannel,
       title: songTitle
     });
 
     player.on(AudioPlayerStatus.Idle, () => {
       console.log(`🎵 [Music Player] Música concluída em: ${guildId}`);
+      if (radioProcess) try { radioProcess.kill(); } catch {}
     });
 
     player.on('error', (error) => {
       console.error(`💥 [Music Player Error]:`, error.message);
+      if (radioProcess) try { radioProcess.kill(); } catch {}
     });
 
     return {
@@ -222,7 +247,7 @@ export async function playMusic(interaction, query) {
     console.error('[PlayMusic Error]:', error);
     return {
       success: false,
-      message: 'não consegui tocar essa música agora meu vei'
+      message: 'não consegui encontrar ou tocar essa música agora meu vei'
     };
   }
 }
@@ -250,6 +275,9 @@ export function stopMusic(interaction) {
   }
 
   try {
+    if (session.radioProcess) {
+      try { session.radioProcess.kill(); } catch {}
+    }
     session.player.stop();
     session.connection.destroy();
     activeSessions.delete(guildId);
