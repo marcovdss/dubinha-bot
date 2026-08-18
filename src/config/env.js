@@ -27,6 +27,10 @@ export const config = {
     cooldownSeconds: parseInt(process.env.COOLDOWN_SECONDS || '25', 10),
     // Mínimo de mensagens humanas antes de poder responder sozinho
     minHumanMessages: parseInt(process.env.MIN_HUMAN_MESSAGES || '2', 10)
+  },
+  assets: {
+    azminStickerId: process.env.AZMIN_STICKER_ID || '1253160415152836608',
+    reactionEmojiId: process.env.REACTION_EMOJI_ID || '1470911490319188255'
   }
 };
 

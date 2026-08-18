@@ -98,7 +98,13 @@ export async function execute(message) {
     }
   }
 
-  if (!shouldReply) return;
+  if (!shouldReply) {
+    // Reação espontânea silenciosa (6% de chance de reagir com o emoji customizado do servidor como lurker)
+    if (isInTargetChannel && config.assets.reactionEmojiId && Math.random() < 0.06) {
+      await message.react(config.assets.reactionEmojiId).catch(() => null);
+    }
+    return;
+  }
 
   // Atualiza controle de cooldown do canal
   stats.lastReplyTime = Date.now();
@@ -205,11 +211,24 @@ export async function execute(message) {
       }
     }
 
-    // Chance de 12% de adicionar uma reação com emoji espontânea antes de responder
-    if (Math.random() < 0.12) {
-      const emojis = ['💀', '🥱', '🍕', '🤡', '😂', '🔥'];
+    // Chance de 20% de adicionar uma reação com emoji espontânea antes de responder (privilegiando o emoji customizado do servidor)
+    if (Math.random() < 0.20) {
+      const customEmoji = config.assets.reactionEmojiId;
+      const emojis = [customEmoji, customEmoji, customEmoji, '💀', '🥱', '🍕', '🤡', '😂', '🔥'];
       const randomEmoji = emojis[Math.floor(Math.random() * emojis.length)];
       await message.react(randomEmoji).catch(() => null);
+    }
+
+    // 5% de chance de responder apenas com o sticker Azmin Ha-jent em mensagens não-diretas
+    const isOnlySticker = !isDirectMention && !isReplyToBot && Math.random() < 0.05;
+    if (isOnlySticker && config.assets.azminStickerId) {
+      await message.reply({
+        stickers: [config.assets.azminStickerId],
+        allowedMentions: { repliedUser: false }
+      }).catch(async () => {
+        await message.channel.send({ stickers: [config.assets.azminStickerId] }).catch(() => null);
+      });
+      return;
     }
 
     // 7. Gera a resposta na persona com contexto multicamadas expandido e visão multimodal (fotos + vídeos)
@@ -231,6 +250,17 @@ export async function execute(message) {
 
     // Envia parcelado linha a linha com digitação humanizada
     await sendChunkedReply(message, response);
+
+    // Chance de 12% de mandar o sticker como catchphrase visual após a resposta
+    if (config.assets.azminStickerId && Math.random() < 0.12) {
+      setTimeout(async () => {
+        try {
+          await message.channel.send({ stickers: [config.assets.azminStickerId] });
+        } catch (stkErr) {
+          console.warn('[Sticker Azmin Error]:', stkErr.message);
+        }
+      }, 1200);
+    }
   } catch (error) {
     console.error('[Erro no processamento da mensagem]:', error);
   }
