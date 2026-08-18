@@ -1,5 +1,5 @@
 import { SlashCommandBuilder } from 'discord.js';
-import { addMusicToQueue, createMusicControlRow, setQueueControlMessage } from '../../services/musicPlayer.js';
+import { addMusicToQueue } from '../../services/musicPlayer.js';
 
 export const data = new SlashCommandBuilder()
   .setName('cantar')
@@ -12,30 +12,13 @@ export const data = new SlashCommandBuilder()
   );
 
 export async function execute(interaction) {
-  await interaction.deferReply();
+  // Resposta efêmera para não poluir o canal de chat
+  await interaction.deferReply({ ephemeral: true });
 
   const query = interaction.options.getString('musica');
   const result = await addMusicToQueue(interaction, query);
 
-  if (!result.success) {
-    return interaction.editReply({
-      content: result.message,
-      components: []
-    });
-  }
-
-  // Se começou a tocar agora, anexa os botões e registra como painel ativo
-  if (result.isFirst) {
-    const replyMsg = await interaction.editReply({
-      content: result.message,
-      components: [createMusicControlRow(false)]
-    });
-    setQueueControlMessage(interaction.guildId, replyMsg);
-  } else {
-    // Se foi apenas adicionada para tocar depois (fila), responde sem botões para evitar poluição
-    await interaction.editReply({
-      content: result.message,
-      components: []
-    });
-  }
+  await interaction.editReply({
+    content: result.message
+  });
 }

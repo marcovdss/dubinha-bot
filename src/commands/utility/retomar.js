@@ -3,12 +3,13 @@ import { resumeMusic } from '../../services/musicPlayer.js';
 
 export const data = new SlashCommandBuilder()
   .setName('retomar')
-  .setDescription('Retoma a música que estava pausada.');
+  .setDescription('Retoma a reprodução da música pausada.');
 
 export async function execute(interaction) {
-  const result = resumeMusic(interaction);
+  const result = await resumeMusic(interaction);
 
   await interaction.reply({
-    content: result.message
+    content: result.message,
+    ephemeral: true
   });
 }

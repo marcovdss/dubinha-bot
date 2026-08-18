@@ -3,12 +3,13 @@ import { pauseMusic } from '../../services/musicPlayer.js';
 
 export const data = new SlashCommandBuilder()
   .setName('pausar')
-  .setDescription('Pausa a música que está tocando.');
+  .setDescription('Pausa a música atual.');
 
 export async function execute(interaction) {
-  const result = pauseMusic(interaction);
+  const result = await pauseMusic(interaction);
 
   await interaction.reply({
-    content: result.message
+    content: result.message,
+    ephemeral: true
   });
 }

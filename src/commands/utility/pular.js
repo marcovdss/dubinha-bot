@@ -6,9 +6,10 @@ export const data = new SlashCommandBuilder()
   .setDescription('Pula para a próxima música da fila.');
 
 export async function execute(interaction) {
-  const result = skipMusic(interaction);
+  const result = await skipMusic(interaction);
 
   await interaction.reply({
-    content: result.message
+    content: result.message,
+    ephemeral: true
   });
 }

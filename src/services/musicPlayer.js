@@ -7,7 +7,7 @@ import {
   entersState,
   StreamType
 } from '@discordjs/voice';
-import { ActionRowBuilder, ButtonBuilder, ButtonStyle } from 'discord.js';
+import { ActionRowBuilder, ButtonBuilder, ButtonStyle, EmbedBuilder } from 'discord.js';
 import { execFile, spawn } from 'child_process';
 import ffmpegPath from 'ffmpeg-static';
 import yts from 'yt-search';
@@ -71,6 +71,122 @@ const PRESET_STREAMS = {
     url: 'https://stream.zeno.fm/7cvg4h203wzuv'
   }
 };
+
+/**
+ * Cria a barra de botões interativos do player de música
+ * @param {boolean} isPaused
+ * @returns {ActionRowBuilder<ButtonBuilder>}
+ */
+export function createMusicControlRow(isPaused = false) {
+  return new ActionRowBuilder().addComponents(
+    new ButtonBuilder()
+      .setCustomId('music_pause_resume')
+      .setLabel(isPaused ? 'Retomar' : 'Pausar')
+      .setEmoji(isPaused ? '▶️' : '⏸️')
+      .setStyle(isPaused ? ButtonStyle.Success : ButtonStyle.Secondary),
+    new ButtonBuilder()
+      .setCustomId('music_skip')
+      .setLabel('Pular')
+      .setEmoji('⏭️')
+      .setStyle(ButtonStyle.Primary),
+    new ButtonBuilder()
+      .setCustomId('music_queue')
+      .setLabel('Fila')
+      .setEmoji('📋')
+      .setStyle(ButtonStyle.Secondary),
+    new ButtonBuilder()
+      .setCustomId('music_stop')
+      .setLabel('Parar')
+      .setEmoji('🛑')
+      .setStyle(ButtonStyle.Danger)
+  );
+}
+
+/**
+ * Monta o payload do display virtual (LCD Dashboard) para edição em tempo real
+ * @param {object} queue
+ * @returns {{ content: string, embeds: Array<EmbedBuilder>, components: Array<ActionRowBuilder> }}
+ */
+export function buildDisplayPayload(queue) {
+  if (!queue || !queue.currentTrack || queue.songs.length === 0) {
+    const embed = new EmbedBuilder()
+      .setColor(0x2B2D31)
+      .setTitle('📻 Dubinha Music Player')
+      .setDescription('⏹️ *Nenhuma música em reprodução no momento.*\nDigite `/cantar` para adicionar uma música ou playlist!')
+      .setFooter({ text: 'Dubinha Bot • Virtual LCD Display' });
+
+    return {
+      content: '',
+      embeds: [embed],
+      components: []
+    };
+  }
+
+  const statusEmoji = queue.isPaused ? '⏸️' : '▶️';
+  const statusText = queue.isPaused ? 'Pausado' : 'Tocando Agora';
+  const color = queue.isPaused ? 0xFEE75C : 0x57F287; // Amarelo se pausado, Verde vivo se tocando
+
+  const embed = new EmbedBuilder()
+    .setColor(color)
+    .setTitle(`${statusEmoji} ${statusText}`)
+    .setDescription(`### 🎵 **${queue.currentTrack.title}**`)
+    .addFields(
+      { name: '🔊 Canal de Voz', value: `<#${queue.voiceChannel?.id}>`, inline: true },
+      { name: '📋 Total na Fila', value: `\`${queue.songs.length} faixa(s)\``, inline: true }
+    );
+
+  if (queue.songs.length > 1) {
+    const upcoming = queue.songs
+      .slice(1, 6)
+      .map((s, idx) => `**${idx + 1}.** ${s.title}`)
+      .join('\n');
+    const extraCount = queue.songs.length - 6;
+    const extraText = extraCount > 0 ? `\n*...e mais ${extraCount} música(s) na fila*` : '';
+
+    embed.addFields({
+      name: '⏭️ Próximas na Fila',
+      value: upcoming + extraText,
+      inline: false
+    });
+  }
+
+  embed.setFooter({ text: 'Dubinha Bot • Painel Interativo em Tempo Real' });
+  embed.setTimestamp();
+
+  return {
+    content: '',
+    embeds: [embed],
+    components: [createMusicControlRow(queue.isPaused)]
+  };
+}
+
+/**
+ * Atualiza a mensagem única do display virtual LCD no canal de música
+ * @param {string} guildId
+ */
+export async function updateVirtualDisplay(guildId) {
+  const queue = queues.get(guildId);
+  if (!queue || !queue.textChannel) return;
+
+  const payload = buildDisplayPayload(queue);
+
+  if (queue.displayMessage) {
+    try {
+      await queue.displayMessage.edit(payload);
+      return;
+    } catch {
+      // Se a mensagem anterior foi apagada, cria uma nova
+      queue.displayMessage = null;
+    }
+  }
+
+  try {
+    const msg = await queue.textChannel.send(payload);
+    queue.displayMessage = msg;
+  } catch (err) {
+    console.error('[Virtual Display Send Error]:', err.message);
+  }
+}
 
 /**
  * Cria processo de streaming via FFmpeg com suporte a URL e ReadableStream (pipe:0)
@@ -391,18 +507,6 @@ async function getTrackAudioProcess(track) {
 }
 
 /**
- * Registra a mensagem ativa de controle com botões
- * @param {string} guildId
- * @param {import('discord.js').Message} message
- */
-export function setQueueControlMessage(guildId, message) {
-  const queue = queues.get(guildId);
-  if (queue) {
-    queue.lastControlMessage = message;
-  }
-}
-
-/**
  * Toca a próxima música da fila da Guild
  * @param {string} guildId
  * @param {boolean} isAutoAdvance
@@ -413,15 +517,10 @@ async function playNextInQueue(guildId, isAutoAdvance = false) {
 
   if (queue.songs.length === 0) {
     console.log(`🎵 [Music Player] Fila vazia em: ${guildId}. Desconectando...`);
-    if (queue.lastControlMessage) {
-      try {
-        await queue.lastControlMessage.edit({ components: [] });
-      } catch {}
-      queue.lastControlMessage = null;
-    }
     if (queue.connection) {
       try { queue.connection.destroy(); } catch {}
     }
+    await updateVirtualDisplay(guildId);
     queues.delete(guildId);
     return;
   }
@@ -457,24 +556,8 @@ async function playNextInQueue(guildId, isAutoAdvance = false) {
     queue.isPaused = false;
     console.log(`🎶 [Music Player] Reproduzindo com sucesso: "${finalTitle}"`);
 
-    // Remove botões da mensagem de controle anterior para não poluir o histórico
-    if (queue.lastControlMessage) {
-      try {
-        await queue.lastControlMessage.edit({ components: [] });
-      } catch {}
-      queue.lastControlMessage = null;
-    }
-
-    // Se for avanço automático para a próxima música da fila, envia o novo painel de botões
-    if (isAutoAdvance && queue.textChannel) {
-      try {
-        const newMsg = await queue.textChannel.send({
-          content: `🎶 Tocando agora: **${finalTitle}**`,
-          components: [createMusicControlRow(false)]
-        });
-        queue.lastControlMessage = newMsg;
-      } catch {}
-    }
+    // Atualiza o Display Virtual LCD em tempo real
+    await updateVirtualDisplay(guildId);
   } catch (err) {
     console.error(`💥 [Music Player Error ao tocar faixa]:`, err.message);
     queue.songs.shift();
@@ -548,7 +631,7 @@ export async function addMusicToQueue(interaction, query) {
         player,
         voiceChannel,
         textChannel: interaction.channel,
-        lastControlMessage: null,
+        displayMessage: null,
         songs: [],
         currentTrack: null,
         isPlaying: false,
@@ -585,26 +668,23 @@ export async function addMusicToQueue(interaction, query) {
       if (tracks.length > 1) {
         return {
           success: true,
-          isFirst: true,
-          message: `🎶 Tocando agora: **${realPlayingTitle}** (+ ${tracks.length - 1} faixas adicionadas da playlist)`
+          message: `🎶 Tocando agora no painel: **${realPlayingTitle}** (+ ${tracks.length - 1} faixas da playlist)`
         };
       }
       return {
         success: true,
-        isFirst: true,
-        message: `🎶 Tocando agora: **${realPlayingTitle}**`
+        message: `🎶 Tocando agora no painel: **${realPlayingTitle}**`
       };
     } else {
+      await updateVirtualDisplay(guildId);
       if (tracks.length > 1) {
         return {
           success: true,
-          isFirst: false,
           message: `➕ **${tracks.length} faixas** adicionadas à fila!`
         };
       }
       return {
         success: true,
-        isFirst: false,
         message: `➕ Adicionado à fila: **${tracks[0].title}** (Posição #${queue.songs.length})`
       };
     }
@@ -621,7 +701,7 @@ export async function addMusicToQueue(interaction, query) {
  * Pula para a próxima música da fila
  * @param {import('discord.js').ChatInputCommandInteraction} interaction
  */
-export function skipMusic(interaction) {
+export async function skipMusic(interaction) {
   if (interaction.channelId !== ALLOWED_TEXT_CHANNEL_ID) {
     return {
       success: false,
@@ -652,7 +732,7 @@ export function skipMusic(interaction) {
  * Pausa a reprodução atual
  * @param {import('discord.js').ChatInputCommandInteraction} interaction
  */
-export function pauseMusic(interaction) {
+export async function pauseMusic(interaction) {
   if (interaction.channelId !== ALLOWED_TEXT_CHANNEL_ID) {
     return {
       success: false,
@@ -672,10 +752,11 @@ export function pauseMusic(interaction) {
 
   queue.player.pause();
   queue.isPaused = true;
+  await updateVirtualDisplay(guildId);
 
   return {
     success: true,
-    message: '⏸️ Música pausada!'
+    message: '⏸️ Música pausada no display!'
   };
 }
 
@@ -683,7 +764,7 @@ export function pauseMusic(interaction) {
  * Retoma a reprodução pausada
  * @param {import('discord.js').ChatInputCommandInteraction} interaction
  */
-export function resumeMusic(interaction) {
+export async function resumeMusic(interaction) {
   if (interaction.channelId !== ALLOWED_TEXT_CHANNEL_ID) {
     return {
       success: false,
@@ -703,10 +784,11 @@ export function resumeMusic(interaction) {
 
   queue.player.unpause();
   queue.isPaused = false;
+  await updateVirtualDisplay(guildId);
 
   return {
     success: true,
-    message: '▶️ Música retomada!'
+    message: '▶️ Música retomada no display!'
   };
 }
 
@@ -757,7 +839,7 @@ export function getQueueList(interaction) {
  * Para a música, limpa a fila e desconecta da sala
  * @param {import('discord.js').ChatInputCommandInteraction} interaction
  */
-export function stopMusic(interaction) {
+export async function stopMusic(interaction) {
   if (interaction.channelId !== ALLOWED_TEXT_CHANNEL_ID) {
     return {
       success: false,
@@ -776,18 +858,14 @@ export function stopMusic(interaction) {
   }
 
   try {
-    if (queue.lastControlMessage) {
-      try {
-        queue.lastControlMessage.edit({ components: [] }).catch(() => {});
-      } catch {}
-      queue.lastControlMessage = null;
-    }
     if (queue.activeProcess) {
       try { queue.activeProcess.kill(); } catch {}
     }
     queue.songs = [];
+    queue.currentTrack = null;
     queue.player.stop();
     queue.connection.destroy();
+    await updateVirtualDisplay(guildId);
     queues.delete(guildId);
 
     return {
@@ -802,36 +880,6 @@ export function stopMusic(interaction) {
       message: 'música parada'
     };
   }
-}
-
-/**
- * Cria a barra de botões interativos do player de música
- * @param {boolean} isPaused
- * @returns {ActionRowBuilder<ButtonBuilder>}
- */
-export function createMusicControlRow(isPaused = false) {
-  return new ActionRowBuilder().addComponents(
-    new ButtonBuilder()
-      .setCustomId('music_pause_resume')
-      .setLabel(isPaused ? 'Retomar' : 'Pausar')
-      .setEmoji(isPaused ? '▶️' : '⏸️')
-      .setStyle(isPaused ? ButtonStyle.Success : ButtonStyle.Secondary),
-    new ButtonBuilder()
-      .setCustomId('music_skip')
-      .setLabel('Pular')
-      .setEmoji('⏭️')
-      .setStyle(ButtonStyle.Primary),
-    new ButtonBuilder()
-      .setCustomId('music_queue')
-      .setLabel('Fila')
-      .setEmoji('📋')
-      .setStyle(ButtonStyle.Secondary),
-    new ButtonBuilder()
-      .setCustomId('music_stop')
-      .setLabel('Parar')
-      .setEmoji('🛑')
-      .setStyle(ButtonStyle.Danger)
-  );
 }
 
 /**
@@ -854,24 +902,15 @@ export async function handleMusicButton(interaction) {
     if (queue.isPaused) {
       queue.player.unpause();
       queue.isPaused = false;
-      await interaction.update({
-        components: [createMusicControlRow(false)]
-      });
-      await interaction.followUp({ content: '▶️ Música retomada!', ephemeral: true });
+      await interaction.update(buildDisplayPayload(queue));
     } else {
       queue.player.pause();
       queue.isPaused = true;
-      await interaction.update({
-        components: [createMusicControlRow(true)]
-      });
-      await interaction.followUp({ content: '⏸️ Música pausada!', ephemeral: true });
+      await interaction.update(buildDisplayPayload(queue));
     }
   } else if (customId === 'music_skip') {
-    const skipped = queue.currentTrack?.title || 'Música';
     queue.player.stop();
-    await interaction.reply({
-      content: `⏭️ Pulada por <@${interaction.user.id}>: **${skipped}**`
-    });
+    await interaction.deferUpdate();
   } else if (customId === 'music_queue') {
     const queueList = getQueueList(interaction);
     await interaction.reply({
@@ -879,9 +918,7 @@ export async function handleMusicButton(interaction) {
       ephemeral: true
     });
   } else if (customId === 'music_stop') {
-    stopMusic(interaction);
-    await interaction.reply({
-      content: `🛑 Música parada por <@${interaction.user.id}>.`
-    });
+    await stopMusic(interaction);
+    await interaction.deferUpdate();
   }
 }
