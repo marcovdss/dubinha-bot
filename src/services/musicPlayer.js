@@ -23,6 +23,7 @@ const __dirname = path.dirname(__filename);
 const isWindows = process.platform === 'win32';
 const localWinBin = path.resolve(__dirname, '../../bin/yt-dlp.exe');
 const ytDlpPath = (isWindows && fs.existsSync(localWinBin)) ? localWinBin : 'yt-dlp';
+const ffmpegExecutable = (isWindows && ffmpegPath) ? ffmpegPath : 'ffmpeg';
 
 const { getTracks, getPreview } = spotifyUrlInfo(fetch);
 
@@ -83,13 +84,13 @@ function createFFmpegStream(inputUrl) {
     '-reconnect_delay_max', '5',
     '-i', inputUrl,
     '-analyzeduration', '0',
-    '-loglevel', '0',
+    '-loglevel', 'error',
     '-f', 's16le',
     '-ar', '48000',
     '-ac', '2',
     'pipe:1'
   ];
-  return spawn(ffmpegPath, ffArgs);
+  return spawn(ffmpegExecutable, ffArgs);
 }
 
 /**
@@ -99,7 +100,7 @@ function createFFmpegStream(inputUrl) {
  */
 function extractYouTubeStreamUrl(targetUrl) {
   return new Promise((resolve, reject) => {
-    const clients = ['android', 'tv_embedded', 'mweb', 'web'];
+    const clients = ['android', 'mweb', 'web', 'tv_embedded'];
     let lastErr = null;
 
     const tryNext = (index) => {
@@ -111,6 +112,7 @@ function extractYouTubeStreamUrl(targetUrl) {
       const args = [
         '-f', 'ba/b',
         '--no-warnings',
+        '--no-check-certificates',
         '--extractor-args', `youtube:player_client=${client}`,
         '-g',
         targetUrl
@@ -270,9 +272,21 @@ async function getTrackAudioProcess(track) {
     for (const scTrack of scResults) {
       try {
         const scStream = await play.stream(scTrack.url);
-        if (scStream && scStream.url) {
+        if (scStream && scStream.stream) {
+          const ff = spawn(ffmpegExecutable, [
+            '-reconnect', '1',
+            '-reconnect_streamed', '1',
+            '-reconnect_delay_max', '5',
+            '-i', 'pipe:0',
+            '-loglevel', 'error',
+            '-f', 's16le',
+            '-ar', '48000',
+            '-ac', '2',
+            'pipe:1'
+          ]);
+          scStream.stream.pipe(ff.stdin);
           return {
-            process: createFFmpegStream(scStream.url),
+            process: ff,
             title: scTrack.name || track.title
           };
         }
@@ -332,6 +346,7 @@ async function playNextInQueue(guildId, isAutoAdvance = false) {
     queue.player.play(audioResource);
     queue.isPlaying = true;
     queue.isPaused = false;
+    console.log(`🎶 [Music Player] Reproduzindo com sucesso: "${finalTitle}"`);
 
     // Se for avanço automático para a próxima música da fila, avisa no chat
     if (isAutoAdvance && queue.textChannel) {
