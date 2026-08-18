@@ -1,5 +1,5 @@
 import { Events, ActivityType } from 'discord.js';
-import { startPizzaScheduler } from '../services/randomEvents.js';
+import { startAutonomousScheduler } from '../services/randomEvents.js';
 import { startTerminalInput } from '../services/terminalInput.js';
 import { startPresenceRotation } from '../services/presenceManager.js';
 
@@ -12,8 +12,8 @@ export function execute(client) {
   // Inicia o Rich Presence realista simulando que ele está jogando WoW, BF4, Delta, etc.
   startPresenceRotation(client);
 
-  // Inicia os eventos aleatórios periódicos (ex: pedir pizza ao longo do dia)
-  startPizzaScheduler(client);
+  // Inicia o agendador unificado de ações autônomas (fotos, pensamentos, momento gamer, pizza)
+  startAutonomousScheduler(client);
 
   // Inicia a interface de controle direto pelo terminal (God Mode)
   startTerminalInput(client);

@@ -64,6 +64,15 @@ let currentActivityIndex = 0;
 let rotationInterval = null;
 
 /**
+ * Retorna o nome do jogo atual do bot
+ * @returns {string}
+ */
+export function getCurrentGame() {
+  const act = JINCHI_ACTIVITIES[currentActivityIndex];
+  return act?.name || 'World of Warcraft';
+}
+
+/**
  * Encontra a chave de asset de arte correspondente ao nome do jogo
  * @param {string} gameName
  * @returns {string|null}
