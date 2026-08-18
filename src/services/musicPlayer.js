@@ -191,6 +191,55 @@ async function resolveTracks(query) {
 }
 
 /**
+ * Obtém stream de áudio com fallback resiliente entre múltiplos candidatos e provedores
+ * @param {string} searchQuery
+ * @returns {Promise<{ stream: any, type: string }>}
+ */
+async function getResilientAudioStream(searchQuery) {
+  await ensureSoundCloud();
+
+  // 1. Tenta os 5 primeiros resultados do SoundCloud
+  try {
+    const scResults = await play.search(searchQuery, { source: { soundcloud: 'tracks' }, limit: 5 });
+    if (scResults && scResults.length > 0) {
+      for (const track of scResults) {
+        try {
+          const scStream = await play.stream(track.url);
+          if (scStream && scStream.stream) {
+            return {
+              stream: scStream.stream,
+              type: scStream.type
+            };
+          }
+        } catch (itemErr) {
+          console.warn(`[Music Player] Faixa "${track.name}" indisponível no SoundCloud (404/privada), tentando próxima opção...`);
+        }
+      }
+    }
+  } catch (scErr) {
+    console.warn('[Music Player] Erro na busca do SoundCloud:', scErr.message);
+  }
+
+  // 2. Fallback para YouTube caso todas as opções do SoundCloud falhem
+  try {
+    const ytResults = await play.search(searchQuery, { source: { youtube: 'video' }, limit: 1 });
+    if (ytResults && ytResults.length > 0) {
+      const ytStream = await play.stream(ytResults[0].url);
+      if (ytStream && ytStream.stream) {
+        return {
+          stream: ytStream.stream,
+          type: ytStream.type
+        };
+      }
+    }
+  } catch (ytErr) {
+    console.warn('[Music Player] Fallback YouTube falhou:', ytErr.message);
+  }
+
+  throw new Error(`Não foi possível reproduzir o áudio de "${searchQuery}"`);
+}
+
+/**
  * Toca a próxima música da fila da Guild
  * @param {string} guildId
  */
@@ -218,7 +267,7 @@ async function playNextInQueue(guildId) {
       queue.radioProcess = null;
     }
 
-    // 1. Rádio Web Contínua
+    // 1. Rádio Web Contínua (FFmpeg Raw PCM)
     if (currentTrack.isRadio) {
       queue.radioProcess = createRadioProcess(currentTrack.radioUrl);
       audioResource = createAudioResource(queue.radioProcess.stdout, {
@@ -233,27 +282,34 @@ async function playNextInQueue(guildId) {
         inlineVolume: true
       });
     }
-    // 3. URL direta do SoundCloud
+    // 3. Faixa direta do SoundCloud (com fallback para busca caso dê 404)
     else if (currentTrack.soundCloudUrl) {
-      const scStream = await play.stream(currentTrack.soundCloudUrl);
-      audioResource = createAudioResource(scStream.stream, {
-        inputType: scStream.type,
-        inlineVolume: true
-      });
-    }
-    // 4. Faixa com searchQuery (Spotify ou termo) -> busca e toca no SoundCloud
-    else if (currentTrack.searchQuery) {
-      await ensureSoundCloud();
-      const scResults = await play.search(currentTrack.searchQuery, { source: { soundcloud: 'tracks' }, limit: 1 });
-      if (scResults && scResults.length > 0) {
-        const scStream = await play.stream(scResults[0].url);
+      try {
+        const scStream = await play.stream(currentTrack.soundCloudUrl);
         audioResource = createAudioResource(scStream.stream, {
           inputType: scStream.type,
           inlineVolume: true
         });
-      } else {
-        throw new Error(`Áudio de "${currentTrack.title}" não encontrado`);
+      } catch (errDirect) {
+        console.warn(`[Music Player] Link direto falhou (${errDirect.message}), acionando busca resiliente para "${currentTrack.title}"...`);
+        const resilient = await getResilientAudioStream(currentTrack.title);
+        audioResource = createAudioResource(resilient.stream, {
+          inputType: resilient.type,
+          inlineVolume: true
+        });
       }
+    }
+    // 4. Faixa com searchQuery (Spotify ou termo) -> busca resiliente
+    else if (currentTrack.searchQuery) {
+      const resilient = await getResilientAudioStream(currentTrack.searchQuery);
+      audioResource = createAudioResource(resilient.stream, {
+        inputType: resilient.type,
+        inlineVolume: true
+      });
+    }
+
+    if (!audioResource) {
+      throw new Error(`Não foi possível gerar recurso de áudio para "${currentTrack.title}"`);
     }
 
     if (audioResource.volume) {
