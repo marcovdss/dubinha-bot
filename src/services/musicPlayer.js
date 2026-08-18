@@ -8,6 +8,7 @@ import {
   StreamType
 } from '@discordjs/voice';
 import { execFile } from 'child_process';
+import yts from 'yt-search';
 import path from 'path';
 import fs from 'fs';
 import { fileURLToPath } from 'url';
@@ -50,43 +51,60 @@ const PRESET_STREAMS = {
 };
 
 /**
- * Extrai o link de áudio e título do YouTube via yt-dlp
- * @param {string} targetUrlOrSearch
+ * Extrai o link de áudio e título do YouTube usando yt-search + rotação de cliente móvel (Android/iOS)
+ * @param {string} queryOrUrl
  * @returns {Promise<{ streamUrl: string, title: string }>}
  */
-function extractYouTubeInfo(targetUrlOrSearch) {
-  return new Promise((resolve, reject) => {
-    if (isWindows && !fs.existsSync(ytDlpPath)) {
-      return reject(new Error('yt-dlp.exe não encontrado'));
+async function extractYouTubeInfo(queryOrUrl) {
+  let targetUrl = queryOrUrl;
+  let songTitle = queryOrUrl;
+
+  // 1. Se for busca por texto, resolve a URL real via yt-search (zero bloqueio de bot do YouTube)
+  if (!queryOrUrl.startsWith('http://') && !queryOrUrl.startsWith('https://')) {
+    try {
+      const searchRes = await yts(queryOrUrl);
+      if (searchRes && searchRes.videos.length > 0) {
+        targetUrl = searchRes.videos[0].url;
+        songTitle = searchRes.videos[0].title;
+      }
+    } catch (searchErr) {
+      console.warn('[Music Player] Erro no yt-search:', searchErr.message);
     }
+  }
 
-    const isUrl = targetUrlOrSearch.startsWith('http://') || targetUrlOrSearch.startsWith('https://');
-    const target = isUrl ? targetUrlOrSearch : `ytsearch1:${targetUrlOrSearch}`;
+  // 2. Extração direta de áudio com rotação de clientes móveis (Android, iOS, TV)
+  const clientProfiles = ['android', 'ios', 'tv_embedded', 'mweb'];
+  let lastError = null;
 
-    const args = [
-      '-f', 'ba/b',
-      '--extractor-args', 'youtube:player_client=android,web',
-      '--print', '%(title)s',
-      '-g',
-      target
-    ];
+  for (const clientProfile of clientProfiles) {
+    try {
+      const args = [
+        '-f', 'ba/b',
+        '--extractor-args', `youtube:player_client=${clientProfile}`,
+        '--print', '%(title)s',
+        '-g',
+        targetUrl
+      ];
 
-    execFile(ytDlpPath, args, { timeout: 20000 }, (error, stdout, stderr) => {
-      if (error) {
-        return reject(error);
-      }
+      const result = await new Promise((resolve, reject) => {
+        execFile(ytDlpPath, args, { timeout: 15000 }, (error, stdout) => {
+          if (error) return reject(error);
+          const lines = stdout.trim().split('\n').map(l => l.trim()).filter(Boolean);
+          if (lines.length === 0) return reject(new Error('Nenhum stream retornado'));
+          resolve({
+            title: songTitle !== queryOrUrl ? songTitle : lines[0],
+            streamUrl: lines[lines.length - 1]
+          });
+        });
+      });
 
-      const lines = stdout.trim().split('\n').map(l => l.trim()).filter(Boolean);
-      if (lines.length === 0) {
-        return reject(new Error('Nenhum stream encontrado'));
-      }
+      return result;
+    } catch (err) {
+      lastError = err;
+    }
+  }
 
-      const title = lines[0];
-      const streamUrl = lines[lines.length - 1];
-
-      resolve({ title, streamUrl });
-    });
-  });
+  throw lastError || new Error('Não foi possível extrair o áudio do YouTube');
 }
 
 /**
