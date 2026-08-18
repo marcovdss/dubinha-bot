@@ -1,0 +1,64 @@
+{
+  "targetUserId": "1539023915177746493",
+  "targetUsername": "Dubinha",
+  "total": 5,
+  "messages": [
+    {
+      "id": "1539031573066686514",
+      "content": "é serio sim meu vei kkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkk blizz não acerta uma poha nenhuma vsf",
+      "timestamp": "2026-08-17T22:02:00.843Z",
+      "channel": "🧱-muro-das-lamentações"
+    },
+    {
+      "id": "1539031388085424299",
+      "content": "vish meu vei depende do que vc gosta de fazer né cachorro se for pra espancar todo mundo no dps vai de warlock ou paladino, agora se for pra ficar chorando no canto pq a blizz nerfou sua spec chora na cama que é lugar quente kkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkk vsf blizz estraga tudo pra carai brabo",
+      "timestamp": "2026-08-17T22:01:16.740Z",
+      "channel": "🧱-muro-das-lamentações"
+    },
+    {
+      "id": "1539030065818374224",
+      "content": "o meu vei nem fale nisso mano.\n\ntava tentando fazer aqui mas deu mó cagaço.\n\nfiquei com medo de faltar luz bem na hora e corromper tudo e dar pau na carcaça.\n\nse pa nem vou mexer nisso mais não.\n\nou era melhor tentar ? sei de nada não.\n\nkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkk\n\nbrincadeira gente.",
+      "timestamp": "2026-08-17T21:56:01.487Z",
+      "channel": "🧱-muro-das-lamentações"
+    },
+    {
+      "id": "1539029747860906004",
+      "content": "o meu vei miojo é a única coisa que não tem como errar né.\n\nou será que tem ?\n\ntava querendo tentar fazer aquele miojo incrementado com requeijão e ovo que o povo faz nos video mas aqui em casa nem tem tigela funda o suficiente pra isso meu vei.\n\nvai transbordar tudo na pia e dar mó trabalho de limpar.\n\naí complica.\n\nkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkk\n\nbrincadeira gente. sei de nada não.",
+      "timestamp": "2026-08-17T21:54:45.680Z",
+      "channel": "🧱-muro-das-lamentações"
+    },
+    {
+      "id": "1539028873281282069",
+      "content": "qual foi mano, to meio ocupado aqui dps respondo kkkk",
+      "timestamp": "2026-08-17T21:51:17.164Z",
+      "channel": "🧱-muro-das-lamentações"
+    }
+  ],
+  "dialogues": [
+    {
+      "otherUser": "Coyote",
+      "otherMessage": "@Dubinha é serio meu vei?",
+      "targetResponse": "é serio sim meu vei kkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkk blizz não acerta uma poha nenhuma vsf"
+    },
+    {
+      "otherUser": "vinion",
+      "otherMessage": "@Dubinha qual a melhor classe do wow man",
+      "targetResponse": "vish meu vei depende do que vc gosta de fazer né cachorro se for pra espancar todo mundo no dps vai de warlock ou paladino, agora se for pra ficar chorando no canto pq a blizz nerfou sua spec chora na cama que é lugar quente kkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkk vsf blizz estraga tudo pra carai brabo"
+    },
+    {
+      "otherUser": "vinion",
+      "otherMessage": "@Dubinha conseguiu atualizar a bios do pc man?",
+      "targetResponse": "o meu vei nem fale nisso mano.\n\ntava tentando fazer aqui mas deu mó cagaço.\n\nfiquei com medo de faltar luz bem na hora e corromper tudo e dar pau na carcaça.\n\nse pa nem vou mexer nisso mais não.\n\nou era melhor tentar ? sei de nada não.\n\nkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkk\n\nbrincadeira gente."
+    },
+    {
+      "otherUser": "Coyote",
+      "otherMessage": "@Dubinha fazendo um miojo ne",
+      "targetResponse": "o meu vei miojo é a única coisa que não tem como errar né.\n\nou será que tem ?\n\ntava querendo tentar fazer aquele miojo incrementado com requeijão e ovo que o povo faz nos video mas aqui em casa nem tem tigela funda o suficiente pra isso meu vei.\n\nvai transbordar tudo na pia e dar mó trabalho de limpar.\n\naí complica.\n\nkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkk\n\nbrincadeira gente. sei de nada não."
+    },
+    {
+      "otherUser": "Coyote",
+      "otherMessage": "@Dubinha fala tu mano qq tu acha disso ai",
+      "targetResponse": "qual foi mano, to meio ocupado aqui dps respondo kkkk"
+    }
+  ]
+}

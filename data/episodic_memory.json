@@ -1,0 +1,28 @@
+{
+  "episodic_events": [
+    {
+      "user": "Zanin",
+      "fact": "comprou jogos na promoção da Steam e não jogou",
+      "date": "2026-07-28",
+      "topic": "games"
+    },
+    {
+      "user": "Zanin",
+      "fact": "joga Battlefield 4 com o Jinchi",
+      "date": "2026-07-28",
+      "topic": "games"
+    },
+    {
+      "user": "f",
+      "fact": "parceiro de mods de CS e memes",
+      "date": "2026-07-20",
+      "topic": "games"
+    },
+    {
+      "user": "vinion",
+      "fact": "sempre debate sobre política e zoeiras de aura",
+      "date": "2026-08-07",
+      "topic": "politica"
+    }
+  ]
+}
