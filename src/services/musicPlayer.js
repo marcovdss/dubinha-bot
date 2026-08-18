@@ -3,14 +3,17 @@ import {
   createAudioPlayer,
   createAudioResource,
   AudioPlayerStatus,
+  VoiceConnectionStatus,
+  entersState,
   StreamType
 } from '@discordjs/voice';
-import ffmpegPath from 'ffmpeg-static';
-import { spawn, execFile } from 'child_process';
-import yts from 'yt-search';
+import { execFile } from 'child_process';
 import path from 'path';
 import fs from 'fs';
 import { fileURLToPath } from 'url';
+
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = path.dirname(__filename);
 
 const isWindows = process.platform === 'win32';
 const localWinBin = path.resolve(__dirname, '../../bin/yt-dlp.exe');
@@ -87,28 +90,6 @@ function extractYouTubeInfo(targetUrlOrSearch) {
 }
 
 /**
- * Cria um stream contínuo de PCM 48kHz via FFmpeg
- * @param {string} inputUrl
- * @returns {import('child_process').ChildProcess}
- */
-function createFFmpegStream(inputUrl) {
-  const ffArgs = [
-    '-reconnect', '1',
-    '-reconnect_streamed', '1',
-    '-reconnect_delay_max', '5',
-    '-i', inputUrl,
-    '-analyzeduration', '0',
-    '-loglevel', '0',
-    '-f', 's16le',
-    '-ar', '48000',
-    '-ac', '2',
-    'pipe:1'
-  ];
-
-  return spawn(ffmpegPath, ffArgs);
-}
-
-/**
  * Conecta ao canal de voz onde o membro está e toca a música solicitada por completo sem cortes
  * @param {import('discord.js').ChatInputCommandInteraction} interaction
  * @param {string} query - Termo de busca, link do YouTube ou gênero
@@ -174,30 +155,6 @@ export async function playMusic(interaction, query) {
       };
     }
 
-    // Cria o processo de decodificação FFmpeg (com auto-reconnect)
-    const ffmpegProcess = createFFmpegStream(inputAudioUrl);
-
-    ffmpegProcess.on('error', (err) => {
-      console.error('[FFmpeg Process Error]:', err.message);
-    });
-
-    const audioResource = createAudioResource(ffmpegProcess.stdout, {
-      inputType: StreamType.Raw,
-      inlineVolume: true
-    });
-
-    if (audioResource.volume) {
-      audioResource.volume.setVolume(0.85);
-    }
-
-    // Se já havia uma sessão ativa, encerra o processo anterior
-    const prevSession = activeSessions.get(guildId);
-    if (prevSession && prevSession.ffmpegProcess) {
-      try {
-        prevSession.ffmpegProcess.kill();
-      } catch {}
-    }
-
     // Conecta à sala de voz do membro
     const connection = joinVoiceChannel({
       channelId: voiceChannel.id,
@@ -207,6 +164,18 @@ export async function playMusic(interaction, query) {
       selfMute: false
     });
 
+    // Aguarda o handshake UDP do Discord estar 100% pronto antes de transmitir
+    await entersState(connection, VoiceConnectionStatus.Ready, 20_000);
+
+    const audioResource = createAudioResource(inputAudioUrl, {
+      inputType: StreamType.Arbitrary,
+      inlineVolume: true
+    });
+
+    if (audioResource.volume) {
+      audioResource.volume.setVolume(0.85);
+    }
+
     const player = createAudioPlayer();
     player.play(audioResource);
     connection.subscribe(player);
@@ -214,19 +183,16 @@ export async function playMusic(interaction, query) {
     activeSessions.set(guildId, {
       connection,
       player,
-      ffmpegProcess,
       channel: voiceChannel,
       title: songTitle
     });
 
     player.on(AudioPlayerStatus.Idle, () => {
       console.log(`🎵 [Music Player] Música concluída em: ${guildId}`);
-      try { ffmpegProcess.kill(); } catch {}
     });
 
     player.on('error', (error) => {
       console.error(`💥 [Music Player Error]:`, error.message);
-      try { ffmpegProcess.kill(); } catch {}
     });
 
     return {
@@ -266,9 +232,6 @@ export function stopMusic(interaction) {
   }
 
   try {
-    if (session.ffmpegProcess) {
-      try { session.ffmpegProcess.kill(); } catch {}
-    }
     session.player.stop();
     session.connection.destroy();
     activeSessions.delete(guildId);
