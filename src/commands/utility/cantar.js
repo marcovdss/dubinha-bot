@@ -1,13 +1,13 @@
 import { SlashCommandBuilder } from 'discord.js';
-import { playMusic, ALLOWED_TEXT_CHANNEL_ID } from '../../services/musicPlayer.js';
+import { addMusicToQueue } from '../../services/musicPlayer.js';
 
 export const data = new SlashCommandBuilder()
   .setName('cantar')
-  .setDescription('Toca uma música do YouTube ou rádio na sala de voz permitida.')
+  .setDescription('Toca uma música/playlist ou adiciona na fila de reprodução.')
   .addStringOption(option =>
     option
       .setName('musica')
-      .setDescription('Nome da música, link do YouTube ou estilo (lofi, rock, sertanejo, forró)')
+      .setDescription('Nome da música, artista, link ou estilo (lofi, rock, sertanejo, forro, anime)')
       .setRequired(true)
   );
 
@@ -15,17 +15,9 @@ export async function execute(interaction) {
   await interaction.deferReply();
 
   const query = interaction.options.getString('musica');
-  const result = await playMusic(interaction, query);
+  const result = await addMusicToQueue(interaction, query);
 
-  if (!result.success) {
-    await interaction.editReply({
-      content: result.message
-    });
-    return;
-  }
-
-  // Apenas confirmação limpa e direta
   await interaction.editReply({
-    content: `🎶 Tocando agora: **${result.title}**`
+    content: result.message
   });
 }

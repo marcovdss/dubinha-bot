@@ -14,8 +14,8 @@ import { spawn } from 'child_process';
 // Canal de texto exclusivo onde os comandos de música são permitidos (#🔊-musica)
 export const ALLOWED_TEXT_CHANNEL_ID = '907283294700326932';
 
-// Mapa de conexões ativas por Guild ID
-const activeSessions = new Map();
+// Mapa de filas ativas por Guild ID
+const queues = new Map();
 
 // Controle de inicialização do SoundCloud Client
 let soundcloudReady = false;
@@ -81,56 +81,131 @@ function createRadioProcess(url) {
 }
 
 /**
- * Busca e extrai stream de áudio via SoundCloud ou YouTube
+ * Busca e extrai stream de áudio via SoundCloud ou Web Stream
  * @param {string} query
- * @returns {Promise<{ stream: any, type: string, title: string }>}
+ * @returns {Promise<Array<{ title: string, streamUrl?: string, soundCloudUrl?: string, isRadio?: boolean, radioUrl?: string, isDirect?: boolean }>>}
  */
-async function fetchMusicStream(query) {
+async function resolveTracks(query) {
+  const lowerQuery = query.toLowerCase().trim();
+
+  // 1. Rádio / Preset temático
+  if (PRESET_STREAMS[lowerQuery]) {
+    return [{
+      title: PRESET_STREAMS[lowerQuery].title,
+      isRadio: true,
+      radioUrl: PRESET_STREAMS[lowerQuery].url
+    }];
+  }
+
+  // 2. Link direto de áudio (MP3 / OGG)
+  if (/^https?:\/\/.+\.(?:mp3|ogg|wav|m3u8)$/i.test(query)) {
+    return [{
+      title: 'Áudio Direto da Web',
+      isDirect: true,
+      streamUrl: query
+    }];
+  }
+
   await ensureSoundCloud();
 
-  // 1. Busca no SoundCloud (100% de estabilidade e sem bloqueios de IP)
+  // 3. Playlist do SoundCloud
+  if (query.includes('soundcloud.com') && query.includes('/sets/')) {
+    try {
+      const playlist = await play.soundcloud(query);
+      const tracks = await playlist.all_tracks();
+      return tracks.map(t => ({
+        title: t.name || 'Faixa SoundCloud',
+        soundCloudUrl: t.url
+      }));
+    } catch (e) {
+      console.warn('[Music Player] Erro ao carregar playlist SoundCloud:', e.message);
+    }
+  }
+
+  // 4. Busca de Faixa individual no SoundCloud
   try {
-    console.log(`🔍 [Music Player] Buscando "${query}" no catálogo SoundCloud...`);
     const scResults = await play.search(query, { source: { soundcloud: 'tracks' }, limit: 1 });
     if (scResults && scResults.length > 0) {
       const track = scResults[0];
-      console.log(`✅ [Music Player] Encontrado no SoundCloud: "${track.name}"`);
-      const scStream = await play.stream(track.url);
-      return {
-        stream: scStream.stream,
-        type: scStream.type,
-        title: track.name || query
-      };
+      return [{
+        title: track.name || query,
+        soundCloudUrl: track.url
+      }];
     }
   } catch (scErr) {
     console.warn('[Music Player] Busca SoundCloud falhou:', scErr.message);
   }
 
-  // 2. Se for link direto do YouTube ou busca direta
-  if (play.yt_validate(query) === 'video') {
-    try {
-      console.log(`🔍 [Music Player] Extraindo stream do YouTube: ${query}...`);
-      const ytStream = await play.stream(query);
-      const ytInfo = await play.video_info(query);
-      return {
-        stream: ytStream.stream,
-        type: ytStream.type,
-        title: ytInfo?.video_details?.title || 'YouTube Audio'
-      };
-    } catch (ytErr) {
-      console.warn('[Music Player] Stream YouTube direto falhou:', ytErr.message);
-    }
-  }
-
-  throw new Error('Música não encontrada nos catálogos de streaming');
+  throw new Error('Nenhuma música encontrada');
 }
 
 /**
- * Conecta ao canal de voz onde o membro está e toca a música solicitada por completo sem cortes
- * @param {import('discord.js').ChatInputCommandInteraction} interaction
- * @param {string} query - Termo de busca, link do YouTube ou gênero
+ * Toca a próxima música da fila da Guild
+ * @param {string} guildId
  */
-export async function playMusic(interaction, query) {
+async function playNextInQueue(guildId) {
+  const queue = queues.get(guildId);
+  if (!queue) return;
+
+  if (queue.songs.length === 0) {
+    console.log(`🎵 [Music Player] Fila vazia em: ${guildId}. Desconectando...`);
+    if (queue.connection) {
+      try { queue.connection.destroy(); } catch {}
+    }
+    queues.delete(guildId);
+    return;
+  }
+
+  const currentTrack = queue.songs[0];
+  queue.currentTrack = currentTrack;
+
+  try {
+    let audioResource = null;
+
+    if (queue.radioProcess) {
+      try { queue.radioProcess.kill(); } catch {}
+      queue.radioProcess = null;
+    }
+
+    if (currentTrack.isRadio) {
+      queue.radioProcess = createRadioProcess(currentTrack.radioUrl);
+      audioResource = createAudioResource(queue.radioProcess.stdout, {
+        inputType: StreamType.Raw,
+        inlineVolume: true
+      });
+    } else if (currentTrack.isDirect) {
+      audioResource = createAudioResource(currentTrack.streamUrl, {
+        inputType: StreamType.Arbitrary,
+        inlineVolume: true
+      });
+    } else {
+      const scStream = await play.stream(currentTrack.soundCloudUrl);
+      audioResource = createAudioResource(scStream.stream, {
+        inputType: scStream.type,
+        inlineVolume: true
+      });
+    }
+
+    if (audioResource.volume) {
+      audioResource.volume.setVolume(0.85);
+    }
+
+    queue.player.play(audioResource);
+    queue.isPlaying = true;
+    queue.isPaused = false;
+  } catch (err) {
+    console.error(`💥 [Music Player Error ao tocar faixa]:`, err.message);
+    queue.songs.shift(); // Remove a com erro e tenta a próxima
+    playNextInQueue(guildId);
+  }
+}
+
+/**
+ * Adiciona música ou playlist na fila e inicia se estiver parado
+ * @param {import('discord.js').ChatInputCommandInteraction} interaction
+ * @param {string} query
+ */
+export async function addMusicToQueue(interaction, query) {
   // 1. Valida se o comando foi enviado no canal de texto permitido (#🔊-musica)
   if (interaction.channelId !== ALLOWED_TEXT_CHANNEL_ID) {
     return {
@@ -161,99 +236,232 @@ export async function playMusic(interaction, query) {
   const guildId = interaction.guild.id;
 
   try {
-    let songTitle = query;
-    let audioResource = null;
-    let radioProcess = null;
+    const tracks = await resolveTracks(query);
+    if (!tracks || tracks.length === 0) {
+      return {
+        success: false,
+        message: 'não consegui encontrar essa música meu vei'
+      };
+    }
 
-    const lowerQuery = query.toLowerCase().trim();
+    let queue = queues.get(guildId);
 
-    // Caso A: Rádio / Estilo predefinido (Lofi, Sertanejo, Rock, Forró, Anime)
-    if (PRESET_STREAMS[lowerQuery]) {
-      songTitle = PRESET_STREAMS[lowerQuery].title;
-      radioProcess = createRadioProcess(PRESET_STREAMS[lowerQuery].url);
-      audioResource = createAudioResource(radioProcess.stdout, {
-        inputType: StreamType.Raw,
-        inlineVolume: true
+    if (!queue) {
+      const connection = joinVoiceChannel({
+        channelId: voiceChannel.id,
+        guildId: guildId,
+        adapterCreator: interaction.guild.voiceAdapterCreator,
+        selfDeaf: false,
+        selfMute: false
       });
-    }
-    // Caso B: Link direto de arquivo de áudio (.mp3, .ogg, .wav)
-    else if (/^https?:\/\/.+\.(?:mp3|ogg|wav|m3u8)$/i.test(query)) {
-      songTitle = 'Áudio Web';
-      audioResource = createAudioResource(query, {
-        inputType: StreamType.Arbitrary,
-        inlineVolume: true
+
+      await entersState(connection, VoiceConnectionStatus.Ready, 20_000);
+
+      const player = createAudioPlayer();
+      connection.subscribe(player);
+
+      queue = {
+        guildId,
+        connection,
+        player,
+        voiceChannel,
+        songs: [],
+        currentTrack: null,
+        isPlaying: false,
+        isPaused: false,
+        radioProcess: null
+      };
+
+      player.on(AudioPlayerStatus.Idle, () => {
+        queue.songs.shift(); // Remove a música que terminou
+        playNextInQueue(guildId);
       });
-    }
-    // Caso C: Busca por nome de música ou artista (Tim Maia, Evidências, etc.)
-    else {
-      const musicData = await fetchMusicStream(query);
-      songTitle = musicData.title;
-      audioResource = createAudioResource(musicData.stream, {
-        inputType: musicData.type,
-        inlineVolume: true
+
+      player.on('error', (error) => {
+        console.error('[Player Error]:', error.message);
+        queue.songs.shift();
+        playNextInQueue(guildId);
       });
+
+      queues.set(guildId, queue);
     }
 
-    if (audioResource.volume) {
-      audioResource.volume.setVolume(0.85);
+    const isFirst = queue.songs.length === 0 && !queue.isPlaying;
+
+    // Enfileira as faixas
+    queue.songs.push(...tracks);
+
+    if (isFirst) {
+      playNextInQueue(guildId);
+      if (tracks.length > 1) {
+        return {
+          success: true,
+          message: `🎶 Tocando agora: **${tracks[0].title}** (+ ${tracks.length - 1} faixas adicionadas da playlist)`
+        };
+      }
+      return {
+        success: true,
+        message: `🎶 Tocando agora: **${tracks[0].title}**`
+      };
+    } else {
+      if (tracks.length > 1) {
+        return {
+          success: true,
+          message: `➕ **${tracks.length} faixas** adicionadas à fila!`
+        };
+      }
+      return {
+        success: true,
+        message: `➕ Adicionado à fila: **${tracks[0].title}** (Posição #${queue.songs.length})`
+      };
     }
-
-    // Se já havia uma rádio tocando na mesma guilda, encerra o processo anterior
-    const prevSession = activeSessions.get(guildId);
-    if (prevSession && prevSession.radioProcess) {
-      try { prevSession.radioProcess.kill(); } catch {}
-    }
-
-    // Conecta à sala de voz do membro
-    const connection = joinVoiceChannel({
-      channelId: voiceChannel.id,
-      guildId: guildId,
-      adapterCreator: interaction.guild.voiceAdapterCreator,
-      selfDeaf: false,
-      selfMute: false
-    });
-
-    // Aguarda o handshake UDP do Discord estar 100% pronto antes de transmitir
-    await entersState(connection, VoiceConnectionStatus.Ready, 20_000);
-
-    const player = createAudioPlayer();
-    player.play(audioResource);
-    connection.subscribe(player);
-
-    activeSessions.set(guildId, {
-      connection,
-      player,
-      radioProcess,
-      channel: voiceChannel,
-      title: songTitle
-    });
-
-    player.on(AudioPlayerStatus.Idle, () => {
-      console.log(`🎵 [Music Player] Música concluída em: ${guildId}`);
-      if (radioProcess) try { radioProcess.kill(); } catch {}
-    });
-
-    player.on('error', (error) => {
-      console.error(`💥 [Music Player Error]:`, error.message);
-      if (radioProcess) try { radioProcess.kill(); } catch {}
-    });
-
-    return {
-      success: true,
-      title: songTitle,
-      channelName: voiceChannel.name
-    };
   } catch (error) {
-    console.error('[PlayMusic Error]:', error);
+    console.error('[AddMusic Error]:', error);
     return {
       success: false,
-      message: 'não consegui encontrar ou tocar essa música agora meu vei'
+      message: 'não consegui carregar essa música meu vei'
     };
   }
 }
 
 /**
- * Para a música e desconecta o bot da sala de voz
+ * Pula para a próxima música da fila
+ * @param {import('discord.js').ChatInputCommandInteraction} interaction
+ */
+export function skipMusic(interaction) {
+  if (interaction.channelId !== ALLOWED_TEXT_CHANNEL_ID) {
+    return {
+      success: false,
+      message: `esse comando só pode ser usado no canal <#${ALLOWED_TEXT_CHANNEL_ID}> meu vei`
+    };
+  }
+
+  const guildId = interaction.guild.id;
+  const queue = queues.get(guildId);
+
+  if (!queue || !queue.currentTrack) {
+    return {
+      success: false,
+      message: 'não tem nada tocando pra pular meu vei'
+    };
+  }
+
+  const skippedTitle = queue.currentTrack.title;
+  queue.player.stop(); // Dispara o evento Idle que puxa a próxima
+
+  return {
+    success: true,
+    message: `⏭️ Pulada: **${skippedTitle}**`
+  };
+}
+
+/**
+ * Pausa a reprodução atual
+ * @param {import('discord.js').ChatInputCommandInteraction} interaction
+ */
+export function pauseMusic(interaction) {
+  if (interaction.channelId !== ALLOWED_TEXT_CHANNEL_ID) {
+    return {
+      success: false,
+      message: `esse comando só pode ser usado no canal <#${ALLOWED_TEXT_CHANNEL_ID}> meu vei`
+    };
+  }
+
+  const guildId = interaction.guild.id;
+  const queue = queues.get(guildId);
+
+  if (!queue || !queue.isPlaying || queue.isPaused) {
+    return {
+      success: false,
+      message: 'não tem nenhuma música tocando no momento meu vei'
+    };
+  }
+
+  queue.player.pause();
+  queue.isPaused = true;
+
+  return {
+    success: true,
+    message: '⏸️ Música pausada!'
+  };
+}
+
+/**
+ * Retoma a reprodução pausada
+ * @param {import('discord.js').ChatInputCommandInteraction} interaction
+ */
+export function resumeMusic(interaction) {
+  if (interaction.channelId !== ALLOWED_TEXT_CHANNEL_ID) {
+    return {
+      success: false,
+      message: `esse comando só pode ser usado no canal <#${ALLOWED_TEXT_CHANNEL_ID}> meu vei`
+    };
+  }
+
+  const guildId = interaction.guild.id;
+  const queue = queues.get(guildId);
+
+  if (!queue || !queue.isPaused) {
+    return {
+      success: false,
+      message: 'a música não está pausada meu vei'
+    };
+  }
+
+  queue.player.unpause();
+  queue.isPaused = false;
+
+  return {
+    success: true,
+    message: '▶️ Música retomada!'
+  };
+}
+
+/**
+ * Retorna a lista da fila de reprodução atual
+ * @param {import('discord.js').ChatInputCommandInteraction} interaction
+ */
+export function getQueueList(interaction) {
+  if (interaction.channelId !== ALLOWED_TEXT_CHANNEL_ID) {
+    return {
+      success: false,
+      message: `esse comando só pode ser usado no canal <#${ALLOWED_TEXT_CHANNEL_ID}> meu vei`
+    };
+  }
+
+  const guildId = interaction.guild.id;
+  const queue = queues.get(guildId);
+
+  if (!queue || (!queue.currentTrack && queue.songs.length === 0)) {
+    return {
+      success: false,
+      message: 'a fila está vazia no momento meu vei'
+    };
+  }
+
+  let text = `🎶 **Tocando Agora:**\n▶️ **${queue.currentTrack?.title || 'Nada'}**\n\n`;
+
+  if (queue.songs.length > 1) {
+    text += `📋 **Próximas na Fila (${queue.songs.length - 1}):**\n`;
+    const upcoming = queue.songs.slice(1, 11); // Até 10 músicas
+    upcoming.forEach((track, index) => {
+      text += `**${index + 1}.** ${track.title}\n`;
+    });
+    if (queue.songs.length > 11) {
+      text += `*...e mais ${queue.songs.length - 11} música(s)*\n`;
+    }
+  } else {
+    text += `*Nenhuma outra música na fila.*`;
+  }
+
+  return {
+    success: true,
+    message: text
+  };
+}
+
+/**
+ * Para a música, limpa a fila e desconecta da sala
  * @param {import('discord.js').ChatInputCommandInteraction} interaction
  */
 export function stopMusic(interaction) {
@@ -265,9 +473,9 @@ export function stopMusic(interaction) {
   }
 
   const guildId = interaction.guild.id;
-  const session = activeSessions.get(guildId);
+  const queue = queues.get(guildId);
 
-  if (!session) {
+  if (!queue) {
     return {
       success: false,
       message: 'to cantando em lugar nenhum não meu vei'
@@ -275,20 +483,21 @@ export function stopMusic(interaction) {
   }
 
   try {
-    if (session.radioProcess) {
-      try { session.radioProcess.kill(); } catch {}
+    if (queue.radioProcess) {
+      try { queue.radioProcess.kill(); } catch {}
     }
-    session.player.stop();
-    session.connection.destroy();
-    activeSessions.delete(guildId);
+    queue.songs = [];
+    queue.player.stop();
+    queue.connection.destroy();
+    queues.delete(guildId);
 
     return {
       success: true,
-      message: 'música parada'
+      message: 'música parada e fila limpa'
     };
   } catch (error) {
     console.error('[StopMusic Error]:', error);
-    activeSessions.delete(guildId);
+    queues.delete(guildId);
     return {
       success: true,
       message: 'música parada'
