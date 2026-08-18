@@ -300,6 +300,18 @@ async function getTrackAudioProcess(track) {
 }
 
 /**
+ * Registra a mensagem ativa de controle com botões
+ * @param {string} guildId
+ * @param {import('discord.js').Message} message
+ */
+export function setQueueControlMessage(guildId, message) {
+  const queue = queues.get(guildId);
+  if (queue) {
+    queue.lastControlMessage = message;
+  }
+}
+
+/**
  * Toca a próxima música da fila da Guild
  * @param {string} guildId
  * @param {boolean} isAutoAdvance
@@ -310,6 +322,12 @@ async function playNextInQueue(guildId, isAutoAdvance = false) {
 
   if (queue.songs.length === 0) {
     console.log(`🎵 [Music Player] Fila vazia em: ${guildId}. Desconectando...`);
+    if (queue.lastControlMessage) {
+      try {
+        await queue.lastControlMessage.edit({ components: [] });
+      } catch {}
+      queue.lastControlMessage = null;
+    }
     if (queue.connection) {
       try { queue.connection.destroy(); } catch {}
     }
@@ -348,12 +366,23 @@ async function playNextInQueue(guildId, isAutoAdvance = false) {
     queue.isPaused = false;
     console.log(`🎶 [Music Player] Reproduzindo com sucesso: "${finalTitle}"`);
 
-    // Se for avanço automático para a próxima música da fila, avisa no chat
+    // Remove botões da mensagem de controle anterior para não poluir o histórico
+    if (queue.lastControlMessage) {
+      try {
+        await queue.lastControlMessage.edit({ components: [] });
+      } catch {}
+      queue.lastControlMessage = null;
+    }
+
+    // Se for avanço automático para a próxima música da fila, envia o novo painel de botões
     if (isAutoAdvance && queue.textChannel) {
-      queue.textChannel.send({
-        content: `🎶 Tocando agora: **${finalTitle}**`,
-        components: [createMusicControlRow(false)]
-      }).catch(() => {});
+      try {
+        const newMsg = await queue.textChannel.send({
+          content: `🎶 Tocando agora: **${finalTitle}**`,
+          components: [createMusicControlRow(false)]
+        });
+        queue.lastControlMessage = newMsg;
+      } catch {}
     }
   } catch (err) {
     console.error(`💥 [Music Player Error ao tocar faixa]:`, err.message);
@@ -428,6 +457,7 @@ export async function addMusicToQueue(interaction, query) {
         player,
         voiceChannel,
         textChannel: interaction.channel,
+        lastControlMessage: null,
         songs: [],
         currentTrack: null,
         isPlaying: false,
@@ -464,22 +494,26 @@ export async function addMusicToQueue(interaction, query) {
       if (tracks.length > 1) {
         return {
           success: true,
+          isFirst: true,
           message: `🎶 Tocando agora: **${realPlayingTitle}** (+ ${tracks.length - 1} faixas adicionadas da playlist)`
         };
       }
       return {
         success: true,
+        isFirst: true,
         message: `🎶 Tocando agora: **${realPlayingTitle}**`
       };
     } else {
       if (tracks.length > 1) {
         return {
           success: true,
+          isFirst: false,
           message: `➕ **${tracks.length} faixas** adicionadas à fila!`
         };
       }
       return {
         success: true,
+        isFirst: false,
         message: `➕ Adicionado à fila: **${tracks[0].title}** (Posição #${queue.songs.length})`
       };
     }
@@ -651,6 +685,12 @@ export function stopMusic(interaction) {
   }
 
   try {
+    if (queue.lastControlMessage) {
+      try {
+        queue.lastControlMessage.edit({ components: [] }).catch(() => {});
+      } catch {}
+      queue.lastControlMessage = null;
+    }
     if (queue.activeProcess) {
       try { queue.activeProcess.kill(); } catch {}
     }
