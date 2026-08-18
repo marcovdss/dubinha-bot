@@ -1,80 +1,87 @@
-# 🤖 Dubinha Bot (Jinchi Discord Persona AI)
+# Dubinha Bot (Jinchi AI)
 
-Bot para Discord desenvolvido em **Node.js** com **discord.js v14** e **Google Gemini 3.5 Flash** que simula a personalidade, gírias, piadas internas, trejeitos de fala, visão computacional, reprodução de música e memória episódica do **Jinchi** no servidor.
-
----
-
-## ✨ Principais Funcionalidades
-
-- 🧠 **Cérebro Multicamadas:** Raciocínio cognitivo interno via Gemini com busca semântica (RAG) em 21.000+ mensagens históricas e 347 diálogos reais.
-- 👁️ **Visão Multimodal (Fotos e Vídeos):** Enxerga imagens, memes, fotos e vídeos (`.mp4`, `.webm`, `.mov`), reagindo visceralmente em vez de fazer descrições robóticas.
-- 💬 **Envio em Rajada Orgânica:** Envia de 1 a 5 mensagens sequenciais com simulação de digitação humana (`mensagem > envia > mensagem > envia`).
-- 🧠 **Memória Episódica & Curto Prazo:** Lembra fatos importantes dos membros e tópicos discutidos no dia.
-- 🎸 **Módulo de Voz & Música (`/cantar` e `/parar`):** Toca músicas completas do YouTube e rádios web sem interrupções com decodificação contínua FFmpeg.
-- 🍕 **Comando de Cobrança (`/pizza`):** Cobra PIX para pizza de amigos no chat com opções de alvo, sabor e valor.
+Bot pro Discord feito pra imitar a persona, gírias e piadas internas do **Jinchi (Dubinha)** usando a API do Gemini. Ele entra na resenha do chat, reage a fotos/vídeos, lembra de histórias do pessoal e ainda toca música nos canais de voz.
 
 ---
 
-## 📁 Estrutura do Projeto
+## O que ele faz
 
-```
-dubinha-bot/
-├── .env                  # Credenciais e tokens privados (ignorado pelo git)
-├── .env.example          # Modelo de configuração
-├── package.json          # Dependências e scripts
-├── data/
-│   ├── episodic_memory.json        # Memória persistente de longo prazo
-│   └── raw_messages_*.json         # Dataset do Jinchi minerado do Discord
-└── src/
-    ├── index.js          # Ponto de entrada
-    ├── deploy-commands.js# Registra comandos de barra (/) no Discord
-    ├── config/
-    │   ├── env.js        # Validação de variáveis de ambiente
-    │   └── persona.js    # Personalidade, dialeto, regras e diálogos
-    ├── services/
-    │   ├── ai.js         # Integração com Google Gemini
-    │   ├── rag.js        # Motor de busca semântica RAG
-    │   ├── episodicMemory.js # Gerenciador de memória de longo prazo
-    │   ├── sessionMemory.js  # Gerenciador de memória de curto prazo
-    │   ├── musicPlayer.js    # Player de música em salas de voz
-    │   └── randomEvents.js   # Eventos aleatórios de pizza e zoeira
-    ├── commands/
-    │   └── utility/
-    │       ├── cantar.js # /cantar [musica]
-    │       ├── parar.js  # /parar
-    │       ├── pizza.js  # /pizza [alvo] [sabor] [valor]
-    │       ├── aprender.js # /aprender [alvo] [limite]
-    │       └── ping.js   # /ping
-    └── events/
-        ├── ready.js          # Evento de inicialização
-        ├── interactionCreate.js # Despacho de comandos de barra
-        └── messageCreate.js  # Processamento de chat, fotos e vídeos
-```
+- **Conversa no chat:** Responde menções, replies ou se intromete nas conversas usando as gírias do Jinchi (*"meu vei"*, *"caba"*, *"é macaxeira vei"*, etc.), mandando mensagens curtas picadas como uma pessoa de verdade.
+- **Reage a fotos e vídeos:** Olha os prints, memes e clipes postados no canal e comenta sobre eles em vez de ficar descrevendo a imagem como um robô.
+- **Memória e aprendizado:** Guarda fatos sobre o pessoal do servidor e aprende novas mensagens do Jinchi original em tempo real.
+- **Toca música no voice:** Suporta YouTube e links diretos usando comandos simples (`/cantar`, `/parar`, `/pular`, `/fila`).
+- **Resenha e comandos:** Comandos como `/pizza` pra cobrar os amigos e `/aprender` pra ensinar novas piadas ou regras pra IA.
 
 ---
 
-## 🚀 Como Rodar o Projeto
+## Pré-requisitos
 
-### 1. Instale as Dependências
+- **Node.js** (versão 18 ou superior)
+- Uma aplicação/bot criada no [Discord Developer Portal](https://discord.com/developers/applications)
+- Uma chave de API do [Google Gemini (Google AI Studio)](https://aistudio.google.com/)
+
+---
+
+## Como rodar
+
+### 1. Instalar dependências
 ```bash
 npm install
 ```
 
-### 2. Configure o Arquivo `.env`
-Copie `.env.example` para `.env` e preencha suas chaves:
+### 2. Configurar o `.env`
+Crie um arquivo `.env` na raiz (você pode copiar o `.env.example`) e preencha suas variáveis:
+
 ```env
 DISCORD_TOKEN=seu_discord_token_aqui
 CLIENT_ID=seu_client_id_aqui
-TARGET_CHANNEL_ID=
-GEMINI_API_KEY=sua_gemini_api_key_aqui
+TARGET_CHANNEL_ID=id_do_canal_principal
+GEMINI_API_KEY=sua_chave_do_gemini
 ```
 
-### 3. Registre os Comandos de Barra
+### 3. Registrar os comandos de barra (`/`)
+Sempre que adicionar ou alterar comandos slash:
 ```bash
 npm run deploy
 ```
 
-### 4. Inicie o Bot
+### 4. Iniciar o bot
+Modo desenvolvimento (com auto-reload):
 ```bash
 npm run dev
+```
+
+Ou modo normal:
+```bash
+npm start
+```
+
+---
+
+## Comandos principais
+
+| Comando | O que faz |
+| --- | --- |
+| `/cantar <busca ou link>` | Toca uma música na sala de voz |
+| `/pausar` / `/retomar` | Pausa ou continua a música |
+| `/pular` | Pula para a próxima da fila |
+| `/fila` | Mostra as próximas músicas |
+| `/parar` | Para a reprodução e sai da call |
+| `/pizza <alvo> <sabor> <valor>` | Cobra o PIX da pizza da galera |
+| `/aprender <instrução>` | Ensina um fato, memória ou regra nova pro bot |
+| `/ping` | Mostra a latência do bot |
+
+---
+
+## Organização do código
+
+```
+dubinha-bot/
+├── data/              # Memória de longo prazo e mensagens salvas
+├── src/
+│   ├── commands/      # Comandos de barra (slash commands)
+│   ├── config/        # Persona, vocabulário e leitura de variáveis
+│   ├── events/        # Eventos do Discord (mensagens, interações)
+│   ├── services/      # Integração com Gemini, player de áudio e memória
+│   └── utils/         # Utilitários (digitação humanizada, URLs)
 ```
