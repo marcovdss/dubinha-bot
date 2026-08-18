@@ -33,7 +33,7 @@ export const ALLOWED_TEXT_CHANNEL_ID = '907283294700326932';
 // Mapa de filas ativas por Guild ID
 const queues = new Map();
 
-// Controle de inicialização do SoundCloud Client (fallback)
+// Controle de inicialização do SoundCloud Client (fallback apenas para buscas de texto)
 let soundcloudReady = false;
 
 async function ensureSoundCloud() {
@@ -120,7 +120,7 @@ function createFFmpegStream(inputUrlOrStream) {
  */
 function extractYouTubeStreamUrl(targetUrl) {
   return new Promise((resolve, reject) => {
-    const clients = ['android', 'mweb', 'web', 'tv_embedded'];
+    const clients = ['android', 'mweb', 'web'];
     let lastErr = null;
 
     const tryNext = (index) => {
@@ -157,7 +157,7 @@ function extractYouTubeStreamUrl(targetUrl) {
 /**
  * Resolve qualquer busca ou link (Spotify, YouTube, SoundCloud, Rádio, Web) para faixas enfileiráveis
  * @param {string} query
- * @returns {Promise<Array<{ title: string, query?: string, isRadio?: boolean, radioUrl?: string, isDirect?: boolean, directUrl?: string, ytUrl?: string }>>}
+ * @returns {Promise<Array<{ title: string, query?: string, isRadio?: boolean, radioUrl?: string, isDirect?: boolean, directUrl?: string, isSpotify?: boolean, isYouTube?: boolean, ytUrl?: string }>>}
  */
 async function resolveTracks(query) {
   const lowerQuery = String(query || '').toLowerCase().trim();
@@ -180,7 +180,7 @@ async function resolveTracks(query) {
     }];
   }
 
-  // 3. Spotify (Músicas, Álbuns, Playlists)
+  // 3. Spotify (Músicas, Álbuns, Playlists) - Busca EXCLUSIVA da faixa original de estúdio do link
   if (query.includes('spotify.com')) {
     console.log(`🟢 [Music Player] Processando link do Spotify: ${query}`);
     if (query.includes('/track/')) {
@@ -190,7 +190,8 @@ async function resolveTracks(query) {
       const fullQuery = cleanArtist ? `${cleanArtist} - ${cleanTitle}` : cleanTitle;
       return [{
         title: fullQuery,
-        query: `${cleanArtist} ${cleanTitle}`.trim()
+        query: fullQuery,
+        isSpotify: true
       }];
     } else if (query.includes('/playlist/') || query.includes('/album/')) {
       const tracks = await getTracks(query);
@@ -201,7 +202,8 @@ async function resolveTracks(query) {
           const fullQuery = trackArtist ? `${trackArtist} - ${trackName}` : trackName;
           return {
             title: fullQuery,
-            query: `${trackArtist} ${trackName}`.trim()
+            query: fullQuery,
+            isSpotify: true
           };
         });
       }
@@ -216,22 +218,25 @@ async function resolveTracks(query) {
       const video = searchRes.videos?.[0] || searchRes;
       return [{
         title: video.title || 'Vídeo YouTube',
+        isYouTube: true,
         ytUrl: query,
         query: video.title || query
       }];
     } catch {
       return [{
         title: 'Vídeo YouTube',
+        isYouTube: true,
         ytUrl: query,
         query: query
       }];
     }
   }
 
-  // 5. Termo de busca genérico (ex: "tim maia", "odd future oldie")
+  // 5. Termo de busca genérico por texto (ex: "tim maia", "odd future oldie")
   return [{
     title: String(query),
-    query: String(query)
+    query: String(query),
+    isGenericSearch: true
   }];
 }
 
@@ -259,7 +264,48 @@ async function getTrackAudioProcess(track) {
     };
   }
 
-  // 3. YouTube (Busca oficial exata via yt-search + yt-dlp + FFmpeg)
+  // 3. Link do Spotify ou Link Direto do YouTube: Busca ESTRITAMENTE a gravação original de estúdio
+  if (track.isSpotify || track.isYouTube) {
+    try {
+      let ytTargetUrl = track.ytUrl;
+      let officialTitle = track.title;
+
+      if (!ytTargetUrl && searchQuery) {
+        const searchRes = await yts(`${searchQuery} Official Audio`);
+        if (searchRes && searchRes.videos && searchRes.videos.length > 0) {
+          // Filtra remixes ou covers para garantir 100% a versão original de estúdio do Spotify
+          const bestVideo = searchRes.videos.find(v => {
+            const t = v.title.toLowerCase();
+            const originalLower = searchQuery.toLowerCase();
+            if (!originalLower.includes('remix') && t.includes('remix')) return false;
+            if (!originalLower.includes('cover') && t.includes('cover')) return false;
+            if (!originalLower.includes('type beat') && t.includes('type beat')) return false;
+            return true;
+          }) || searchRes.videos[0];
+
+          ytTargetUrl = bestVideo.url;
+          officialTitle = bestVideo.title;
+          console.log(`🎬 [Music Player - Spotify Original] Encontrado Oficial: "${officialTitle}" (${bestVideo.duration?.timestamp || 'Duração'})`);
+        }
+      }
+
+      if (ytTargetUrl) {
+        const rawAudioUrl = await extractYouTubeStreamUrl(ytTargetUrl);
+        if (rawAudioUrl) {
+          return {
+            process: createFFmpegStream(rawAudioUrl),
+            title: officialTitle
+          };
+        }
+      }
+    } catch (err) {
+      console.warn(`[Music Player] Erro ao extrair áudio oficial do link (${err.message})`);
+    }
+
+    throw new Error(`Não foi possível carregar a versão oficial da faixa do Spotify: "${track.title}"`);
+  }
+
+  // 4. Busca Genérica de Texto: tenta YouTube primeiro, com fallback para SoundCloud
   try {
     let ytTargetUrl = track.ytUrl;
     let officialTitle = track.title;
@@ -270,7 +316,7 @@ async function getTrackAudioProcess(track) {
         const bestVideo = searchRes.videos[0];
         ytTargetUrl = bestVideo.url;
         officialTitle = bestVideo.title;
-        console.log(`🎬 [Music Player] Encontrado no YouTube Oficial: "${officialTitle}" (${bestVideo.duration?.timestamp || 'Duração'})`);
+        console.log(`🎬 [Music Player] Encontrado no YouTube: "${officialTitle}" (${bestVideo.duration?.timestamp || 'Duração'})`);
       }
     }
 
@@ -284,10 +330,10 @@ async function getTrackAudioProcess(track) {
       }
     }
   } catch (ytErr) {
-    console.warn(`[Music Player] Falha no YouTube Oficial (${ytErr.message}), tentando SoundCloud...`);
+    console.warn(`[Music Player] YouTube falhou na busca genérica (${ytErr.message}), tentando SoundCloud...`);
   }
 
-  // 4. Fallback SoundCloud se o YouTube falhar (usando pipe:0 sem reconnect flags)
+  // Fallback para SoundCloud apenas se for busca genérica de texto
   try {
     await ensureSoundCloud();
     const scResults = await play.search(searchQuery, { source: { soundcloud: 'tracks' }, limit: 3 });
