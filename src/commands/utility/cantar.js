@@ -1,5 +1,5 @@
 import { SlashCommandBuilder } from 'discord.js';
-import { addMusicToQueue } from '../../services/musicPlayer.js';
+import { addMusicToQueue, createMusicControlRow } from '../../services/musicPlayer.js';
 
 export const data = new SlashCommandBuilder()
   .setName('cantar')
@@ -17,7 +17,14 @@ export async function execute(interaction) {
   const query = interaction.options.getString('musica');
   const result = await addMusicToQueue(interaction, query);
 
+  if (!result.success) {
+    return interaction.editReply({
+      content: result.message
+    });
+  }
+
   await interaction.editReply({
-    content: result.message
+    content: result.message,
+    components: [createMusicControlRow(false)]
   });
 }

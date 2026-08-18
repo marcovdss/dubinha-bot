@@ -7,6 +7,7 @@ import {
   entersState,
   StreamType
 } from '@discordjs/voice';
+import { ActionRowBuilder, ButtonBuilder, ButtonStyle } from 'discord.js';
 import play from 'play-dl';
 import ffmpegPath from 'ffmpeg-static';
 import { spawn } from 'child_process';
@@ -502,5 +503,87 @@ export function stopMusic(interaction) {
       success: true,
       message: 'música parada'
     };
+  }
+}
+
+/**
+ * Cria a barra de botões interativos do player de música
+ * @param {boolean} isPaused
+ * @returns {ActionRowBuilder<ButtonBuilder>}
+ */
+export function createMusicControlRow(isPaused = false) {
+  return new ActionRowBuilder().addComponents(
+    new ButtonBuilder()
+      .setCustomId('music_pause_resume')
+      .setLabel(isPaused ? 'Retomar' : 'Pausar')
+      .setEmoji(isPaused ? '▶️' : '⏸️')
+      .setStyle(isPaused ? ButtonStyle.Success : ButtonStyle.Secondary),
+    new ButtonBuilder()
+      .setCustomId('music_skip')
+      .setLabel('Pular')
+      .setEmoji('⏭️')
+      .setStyle(ButtonStyle.Primary),
+    new ButtonBuilder()
+      .setCustomId('music_queue')
+      .setLabel('Fila')
+      .setEmoji('📋')
+      .setStyle(ButtonStyle.Secondary),
+    new ButtonBuilder()
+      .setCustomId('music_stop')
+      .setLabel('Parar')
+      .setEmoji('🛑')
+      .setStyle(ButtonStyle.Danger)
+  );
+}
+
+/**
+ * Processa cliques nos botões do player de música
+ * @param {import('discord.js').ButtonInteraction} interaction
+ */
+export async function handleMusicButton(interaction) {
+  const customId = interaction.customId;
+  const guildId = interaction.guildId;
+  const queue = queues.get(guildId);
+
+  if (!queue) {
+    return interaction.reply({
+      content: 'não tem nenhuma música tocando no momento meu vei',
+      ephemeral: true
+    });
+  }
+
+  if (customId === 'music_pause_resume') {
+    if (queue.isPaused) {
+      queue.player.unpause();
+      queue.isPaused = false;
+      await interaction.update({
+        components: [createMusicControlRow(false)]
+      });
+      await interaction.followUp({ content: '▶️ Música retomada!', ephemeral: true });
+    } else {
+      queue.player.pause();
+      queue.isPaused = true;
+      await interaction.update({
+        components: [createMusicControlRow(true)]
+      });
+      await interaction.followUp({ content: '⏸️ Música pausada!', ephemeral: true });
+    }
+  } else if (customId === 'music_skip') {
+    const skipped = queue.currentTrack?.title || 'Música';
+    queue.player.stop();
+    await interaction.reply({
+      content: `⏭️ Pulada por <@${interaction.user.id}>: **${skipped}**`
+    });
+  } else if (customId === 'music_queue') {
+    const queueList = getQueueList(interaction);
+    await interaction.reply({
+      content: queueList.message,
+      ephemeral: true
+    });
+  } else if (customId === 'music_stop') {
+    stopMusic(interaction);
+    await interaction.reply({
+      content: `🛑 Música parada por <@${interaction.user.id}>.`
+    });
   }
 }

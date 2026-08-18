@@ -1,9 +1,23 @@
 import { Events } from 'discord.js';
+import { handleMusicButton } from '../services/musicPlayer.js';
 
 export const name = Events.InteractionCreate;
 export const once = false;
 
 export async function execute(interaction) {
+  // 1. Processa Cliques em Botões Interativos (Player de Música)
+  if (interaction.isButton()) {
+    if (interaction.customId.startsWith('music_')) {
+      try {
+        await handleMusicButton(interaction);
+      } catch (buttonErr) {
+        console.error('[Erro ao processar botão de música]:', buttonErr);
+      }
+    }
+    return;
+  }
+
+  // 2. Processa Comandos de Barra (Slash Commands)
   if (!interaction.isChatInputCommand()) return;
 
   const command = interaction.client.commands.get(interaction.commandName);
