@@ -12,9 +12,9 @@ import path from 'path';
 import fs from 'fs';
 import { fileURLToPath } from 'url';
 
-const __filename = fileURLToPath(import.meta.url);
-const __dirname = path.dirname(__filename);
-const ytDlpPath = path.resolve(__dirname, '../../bin/yt-dlp.exe');
+const isWindows = process.platform === 'win32';
+const localWinBin = path.resolve(__dirname, '../../bin/yt-dlp.exe');
+const ytDlpPath = (isWindows && fs.existsSync(localWinBin)) ? localWinBin : 'yt-dlp';
 
 // Canal de texto exclusivo onde os comandos de música são permitidos (#🔊-musica)
 export const ALLOWED_TEXT_CHANNEL_ID = '907283294700326932';
@@ -53,7 +53,7 @@ const PRESET_STREAMS = {
  */
 function extractYouTubeInfo(targetUrlOrSearch) {
   return new Promise((resolve, reject) => {
-    if (!fs.existsSync(ytDlpPath)) {
+    if (isWindows && !fs.existsSync(ytDlpPath)) {
       return reject(new Error('yt-dlp.exe não encontrado'));
     }
 
