@@ -1,22 +1,23 @@
-FROM node:20-slim
+FROM node:22-slim
 
-# Instala ffmpeg, python3 e yt-dlp oficial mais recente para streaming de áudio
+# Instala ferramentas essenciais (ffmpeg, python3, yt-dlp)
 RUN apt-get update && apt-get install -y \
     ffmpeg \
     python3 \
     curl \
+    build-essential \
     && curl -L https://github.com/yt-dlp/yt-dlp/releases/latest/download/yt-dlp -o /usr/local/bin/yt-dlp \
     && chmod a+rx /usr/local/bin/yt-dlp \
     && rm -rf /var/lib/apt/lists/*
 
 WORKDIR /app
 
-# Instala dependências
+# Instala dependências do Node.js
 COPY package*.json ./
 RUN npm ci --omit=dev
 
-# Copia código fonte e dados
+# Copia o código da aplicação
 COPY . .
 
-# Comando de inicialização
+# Inicializa o bot
 CMD ["npm", "start"]
