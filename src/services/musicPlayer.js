@@ -73,24 +73,44 @@ const PRESET_STREAMS = {
 };
 
 /**
- * Cria processo de streaming via FFmpeg com reconexão automática e PCM 48kHz stereo
- * @param {string} inputUrl
+ * Cria processo de streaming via FFmpeg com suporte a URL e ReadableStream (pipe:0)
+ * @param {string | import('stream').Readable} inputUrlOrStream
  * @returns {import('child_process').ChildProcess}
  */
-function createFFmpegStream(inputUrl) {
-  const ffArgs = [
-    '-reconnect', '1',
-    '-reconnect_streamed', '1',
-    '-reconnect_delay_max', '5',
-    '-i', inputUrl,
-    '-analyzeduration', '0',
-    '-loglevel', 'error',
-    '-f', 's16le',
-    '-ar', '48000',
-    '-ac', '2',
-    'pipe:1'
-  ];
-  return spawn(ffmpegExecutable, ffArgs);
+function createFFmpegStream(inputUrlOrStream) {
+  const isPipe = typeof inputUrlOrStream !== 'string';
+  const ffArgs = isPipe
+    ? [
+        '-i', 'pipe:0',
+        '-loglevel', 'error',
+        '-f', 's16le',
+        '-ar', '48000',
+        '-ac', '2',
+        'pipe:1'
+      ]
+    : [
+        '-reconnect', '1',
+        '-reconnect_streamed', '1',
+        '-reconnect_delay_max', '5',
+        '-i', inputUrlOrStream,
+        '-analyzeduration', '0',
+        '-loglevel', 'error',
+        '-f', 's16le',
+        '-ar', '48000',
+        '-ac', '2',
+        'pipe:1'
+      ];
+
+  const ffProcess = spawn(ffmpegExecutable, ffArgs);
+
+  if (isPipe) {
+    inputUrlOrStream.pipe(ffProcess.stdin);
+    inputUrlOrStream.on('error', (err) => {
+      console.warn('[Piped Stream Error]:', err.message);
+    });
+  }
+
+  return ffProcess;
 }
 
 /**
@@ -140,7 +160,7 @@ function extractYouTubeStreamUrl(targetUrl) {
  * @returns {Promise<Array<{ title: string, query?: string, isRadio?: boolean, radioUrl?: string, isDirect?: boolean, directUrl?: string, ytUrl?: string }>>}
  */
 async function resolveTracks(query) {
-  const lowerQuery = query.toLowerCase().trim();
+  const lowerQuery = String(query || '').toLowerCase().trim();
 
   // 1. Rádios temáticas pré-definidas
   if (PRESET_STREAMS[lowerQuery]) {
@@ -165,8 +185,8 @@ async function resolveTracks(query) {
     console.log(`🟢 [Music Player] Processando link do Spotify: ${query}`);
     if (query.includes('/track/')) {
       const preview = await getPreview(query);
-      const cleanArtist = preview.artist || '';
-      const cleanTitle = preview.title || preview.track || 'Música';
+      const cleanArtist = String(preview.artist || '');
+      const cleanTitle = String(preview.title || preview.track || 'Música');
       const fullQuery = cleanArtist ? `${cleanArtist} - ${cleanTitle}` : cleanTitle;
       return [{
         title: fullQuery,
@@ -176,8 +196,8 @@ async function resolveTracks(query) {
       const tracks = await getTracks(query);
       if (tracks && tracks.length > 0) {
         return tracks.map(t => {
-          const trackArtist = t.artists?.[0]?.name || t.artist || '';
-          const trackName = t.name || t.title || 'Música';
+          const trackArtist = String(t.artists?.[0]?.name || t.artist || '');
+          const trackName = String(t.name || t.title || 'Música');
           const fullQuery = trackArtist ? `${trackArtist} - ${trackName}` : trackName;
           return {
             title: fullQuery,
@@ -192,7 +212,7 @@ async function resolveTracks(query) {
   if (query.includes('youtube.com/watch') || query.includes('youtu.be/') || query.includes('music.youtube.com/')) {
     console.log(`🔴 [Music Player] Processando link direto do YouTube: ${query}`);
     try {
-      const searchRes = await yts(query);
+      const searchRes = await yts(String(query));
       const video = searchRes.videos?.[0] || searchRes;
       return [{
         title: video.title || 'Vídeo YouTube',
@@ -210,8 +230,8 @@ async function resolveTracks(query) {
 
   // 5. Termo de busca genérico (ex: "tim maia", "odd future oldie")
   return [{
-    title: query,
-    query: query
+    title: String(query),
+    query: String(query)
   }];
 }
 
@@ -221,6 +241,8 @@ async function resolveTracks(query) {
  * @returns {Promise<{ process: import('child_process').ChildProcess, title: string }>}
  */
 async function getTrackAudioProcess(track) {
+  const searchQuery = String(track.query || track.title || '').trim();
+
   // 1. Rádio contínua
   if (track.isRadio) {
     return {
@@ -242,13 +264,13 @@ async function getTrackAudioProcess(track) {
     let ytTargetUrl = track.ytUrl;
     let officialTitle = track.title;
 
-    if (!ytTargetUrl) {
-      const searchRes = await yts(track.query || track.title);
-      if (searchRes && searchRes.videos.length > 0) {
+    if (!ytTargetUrl && searchQuery) {
+      const searchRes = await yts(searchQuery);
+      if (searchRes && searchRes.videos && searchRes.videos.length > 0) {
         const bestVideo = searchRes.videos[0];
         ytTargetUrl = bestVideo.url;
         officialTitle = bestVideo.title;
-        console.log(`🎬 [Music Player] Encontrado no YouTube Oficial: "${officialTitle}" (${bestVideo.duration.timestamp})`);
+        console.log(`🎬 [Music Player] Encontrado no YouTube Oficial: "${officialTitle}" (${bestVideo.duration?.timestamp || 'Duração'})`);
       }
     }
 
@@ -265,28 +287,16 @@ async function getTrackAudioProcess(track) {
     console.warn(`[Music Player] Falha no YouTube Oficial (${ytErr.message}), tentando SoundCloud...`);
   }
 
-  // 4. Fallback SoundCloud se o YouTube falhar
+  // 4. Fallback SoundCloud se o YouTube falhar (usando pipe:0 sem reconnect flags)
   try {
     await ensureSoundCloud();
-    const scResults = await play.search(track.query || track.title, { source: { soundcloud: 'tracks' }, limit: 3 });
+    const scResults = await play.search(searchQuery, { source: { soundcloud: 'tracks' }, limit: 3 });
     for (const scTrack of scResults) {
       try {
         const scStream = await play.stream(scTrack.url);
         if (scStream && scStream.stream) {
-          const ff = spawn(ffmpegExecutable, [
-            '-reconnect', '1',
-            '-reconnect_streamed', '1',
-            '-reconnect_delay_max', '5',
-            '-i', 'pipe:0',
-            '-loglevel', 'error',
-            '-f', 's16le',
-            '-ar', '48000',
-            '-ac', '2',
-            'pipe:1'
-          ]);
-          scStream.stream.pipe(ff.stdin);
           return {
-            process: ff,
+            process: createFFmpegStream(scStream.stream),
             title: scTrack.name || track.title
           };
         }
