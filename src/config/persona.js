@@ -143,13 +143,10 @@ export const personaConfig = {
   ]
 };
 
+import { readJsonSafe } from '../utils/fileStorage.js';
+
 function loadCustomMemory() {
-  try {
-    if (fs.existsSync(customMemoryPath)) {
-      return JSON.parse(fs.readFileSync(customMemoryPath, 'utf-8'));
-    }
-  } catch (e) {}
-  return { rules: [], lore_and_facts: [], phrases_and_dialogues: [] };
+  return readJsonSafe(customMemoryPath, { rules: [], lore_and_facts: [], phrases_and_dialogues: [] });
 }
 
 /**

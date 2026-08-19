@@ -12,6 +12,8 @@ const sessionFilePath = path.join(__dirname, '../../data/session_memory.json');
  * com persistência automática em disco para não esquecer após reinicializações.
  */
 
+import { readJsonSafe, writeJsonAtomic } from '../utils/fileStorage.js';
+
 const memberSessions = new Map();
 
 // Expiração de memória de curto prazo após 12 horas
@@ -20,24 +22,18 @@ const SESSION_TTL_MS = 12 * 60 * 60 * 1000;
 let saveTimeout = null;
 
 function loadSessionsFromFile() {
-  try {
-    if (fs.existsSync(sessionFilePath)) {
-      const data = JSON.parse(fs.readFileSync(sessionFilePath, 'utf-8'));
-      const now = Date.now();
-      if (Array.isArray(data.sessions)) {
-        for (const s of data.sessions) {
-          if (s.userId && s.lastActive && now - s.lastActive < SESSION_TTL_MS * 2) {
-            memberSessions.set(s.userId, {
-              authorName: s.authorName,
-              topics: Array.isArray(s.topics) ? s.topics.filter(t => now - t.timestamp < SESSION_TTL_MS) : [],
-              lastActive: s.lastActive
-            });
-          }
-        }
+  const data = readJsonSafe(sessionFilePath, { sessions: [] });
+  const now = Date.now();
+  if (Array.isArray(data.sessions)) {
+    for (const s of data.sessions) {
+      if (s.userId && s.lastActive && now - s.lastActive < SESSION_TTL_MS * 2) {
+        memberSessions.set(s.userId, {
+          authorName: s.authorName,
+          topics: Array.isArray(s.topics) ? s.topics.filter(t => now - t.timestamp < SESSION_TTL_MS) : [],
+          lastActive: s.lastActive
+        });
       }
     }
-  } catch (err) {
-    console.error('[Session Memory] Erro ao carregar arquivo de sessão:', err.message);
   }
 }
 
@@ -45,25 +41,19 @@ function scheduleSave() {
   if (saveTimeout) return;
   saveTimeout = setTimeout(() => {
     saveTimeout = null;
-    try {
-      const dir = path.dirname(sessionFilePath);
-      if (!fs.existsSync(dir)) fs.mkdirSync(dir, { recursive: true });
-      const now = Date.now();
-      const sessions = [];
-      for (const [userId, session] of memberSessions.entries()) {
-        if (now - session.lastActive < SESSION_TTL_MS * 2) {
-          sessions.push({
-            userId,
-            authorName: session.authorName,
-            topics: session.topics.filter(t => now - t.timestamp < SESSION_TTL_MS),
-            lastActive: session.lastActive
-          });
-        }
+    const now = Date.now();
+    const sessions = [];
+    for (const [userId, session] of memberSessions.entries()) {
+      if (now - session.lastActive < SESSION_TTL_MS * 2) {
+        sessions.push({
+          userId,
+          authorName: session.authorName,
+          topics: session.topics.filter(t => now - t.timestamp < SESSION_TTL_MS),
+          lastActive: session.lastActive
+        });
       }
-      fs.writeFileSync(sessionFilePath, JSON.stringify({ sessions, updatedAt: new Date().toISOString() }, null, 2), 'utf-8');
-    } catch (err) {
-      console.error('[Session Memory] Erro ao salvar arquivo de sessão:', err.message);
     }
+    writeJsonAtomic(sessionFilePath, { sessions, updatedAt: new Date().toISOString() });
   }, 3000);
   if (saveTimeout && typeof saveTimeout.unref === 'function') {
     saveTimeout.unref();

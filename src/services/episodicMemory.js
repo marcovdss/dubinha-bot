@@ -6,33 +6,19 @@ const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 const memoryFilePath = path.join(__dirname, '../../data/episodic_memory.json');
 
+import { readJsonSafe, writeJsonAtomic } from '../utils/fileStorage.js';
+
 let cachedEpisodic = null;
 
 function loadMemoryFile() {
-  try {
-    if (fs.existsSync(memoryFilePath)) {
-      cachedEpisodic = JSON.parse(fs.readFileSync(memoryFilePath, 'utf-8'));
-    } else {
-      cachedEpisodic = { episodic_events: [] };
-    }
-  } catch (err) {
-    console.error('[Episodic Memory] Erro ao carregar arquivo:', err.message);
-    cachedEpisodic = { episodic_events: [] };
-  }
+  cachedEpisodic = readJsonSafe(memoryFilePath, { episodic_events: [] });
+  if (!cachedEpisodic.episodic_events) cachedEpisodic.episodic_events = [];
   return cachedEpisodic;
 }
 
 function saveMemoryFile() {
-  try {
-    if (!cachedEpisodic) return;
-    const dir = path.dirname(memoryFilePath);
-    if (!fs.existsSync(dir)) {
-      fs.mkdirSync(dir, { recursive: true });
-    }
-    fs.writeFileSync(memoryFilePath, JSON.stringify(cachedEpisodic, null, 2), 'utf-8');
-  } catch (err) {
-    console.error('[Episodic Memory] Erro ao salvar arquivo:', err.message);
-  }
+  if (!cachedEpisodic) return;
+  writeJsonAtomic(memoryFilePath, cachedEpisodic);
 }
 
 /**

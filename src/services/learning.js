@@ -4,6 +4,8 @@ import { fileURLToPath } from 'node:url';
 import { config } from '../config/env.js';
 import { addLiveMemory } from './rag.js';
 
+import { readJsonSafe, writeJsonAtomic } from '../utils/fileStorage.js';
+
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 
@@ -14,12 +16,7 @@ const customMemoryPath = path.join(dataDir, 'custom_memory.json');
  * Lê o arquivo de memórias personalizadas
  */
 export function getCustomMemories() {
-  try {
-    if (fs.existsSync(customMemoryPath)) {
-      return JSON.parse(fs.readFileSync(customMemoryPath, 'utf-8'));
-    }
-  } catch (e) {}
-  return { rules: [], lore_and_facts: [], phrases_and_dialogues: [] };
+  return readJsonSafe(customMemoryPath, { rules: [], lore_and_facts: [], phrases_and_dialogues: [] });
 }
 
 /**
@@ -41,26 +38,21 @@ export async function recordLiveMessage(message) {
     }
 
     const filePath = path.join(dataDir, `raw_messages_${targetUserId}.json`);
-    let dataset = {
+    let dataset = readJsonSafe(filePath, {
       targetUserId,
       targetUsername: message.author.username,
       total: 0,
       messages: [],
       dialogues: []
-    };
-
-    if (fs.existsSync(filePath)) {
-      try {
-        dataset = JSON.parse(fs.readFileSync(filePath, 'utf-8'));
-      } catch (err) {
-        console.warn('[Auto-Learner] Recriando dataset corrompido...');
-      }
-    }
+    });
 
     // Evita duplicar mesma mensagem
-    if (dataset.messages.some(m => m.id === message.id)) {
+    if (dataset.messages && dataset.messages.some(m => m.id === message.id)) {
       return;
     }
+
+    if (!Array.isArray(dataset.messages)) dataset.messages = [];
+    if (!Array.isArray(dataset.dialogues)) dataset.dialogues = [];
 
     const newMsgEntry = {
       id: message.id,
@@ -88,7 +80,7 @@ export async function recordLiveMessage(message) {
       } catch (refErr) {}
     }
 
-    fs.writeFileSync(filePath, JSON.stringify(dataset, null, 2));
+    writeJsonAtomic(filePath, dataset);
     addLiveMemory(newMsgEntry, newDialogue);
 
     console.log(`🧠 [Auto-Learner] Nova fala aprendida em tempo real de "${message.author.username}": "${content}"`);
@@ -115,6 +107,10 @@ export async function addManualMemory(input, context = null, explicitType = 'aut
     }
 
     const customMem = getCustomMemories();
+    if (!Array.isArray(customMem.rules)) customMem.rules = [];
+    if (!Array.isArray(customMem.lore_and_facts)) customMem.lore_and_facts = [];
+    if (!Array.isArray(customMem.phrases_and_dialogues)) customMem.phrases_and_dialogues = [];
+
     const pLower = cleanInput.toLowerCase();
     let type = explicitType;
 
@@ -159,17 +155,13 @@ export async function addManualMemory(input, context = null, explicitType = 'aut
       }
     }
 
-    fs.writeFileSync(customMemoryPath, JSON.stringify(customMem, null, 2));
+    writeJsonAtomic(customMemoryPath, customMem);
 
     // 2. Salva também no dataset raw_messages para RAG
     const filePath = path.join(dataDir, `raw_messages_${targetUserId}.json`);
-    let dataset = { targetUserId, total: 0, messages: [], dialogues: [] };
-
-    if (fs.existsSync(filePath)) {
-      try {
-        dataset = JSON.parse(fs.readFileSync(filePath, 'utf-8'));
-      } catch (err) {}
-    }
+    let dataset = readJsonSafe(filePath, { targetUserId, total: 0, messages: [], dialogues: [] });
+    if (!Array.isArray(dataset.messages)) dataset.messages = [];
+    if (!Array.isArray(dataset.dialogues)) dataset.dialogues = [];
 
     const newMsgEntry = {
       id: `manual_${Date.now()}_${Math.floor(Math.random() * 1000)}`,
@@ -192,7 +184,7 @@ export async function addManualMemory(input, context = null, explicitType = 'aut
       dataset.dialogues.unshift(newDialogue);
     }
 
-    fs.writeFileSync(filePath, JSON.stringify(dataset, null, 2));
+    writeJsonAtomic(filePath, dataset);
     addLiveMemory(newMsgEntry, newDialogue);
 
     console.log(`🧠 [Manual-Memory / Behavior] ${categoryName} registrada: "${cleanInput}"`);

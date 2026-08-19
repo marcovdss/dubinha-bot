@@ -6,20 +6,13 @@ const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 const profilesFilePath = path.join(__dirname, '../../data/members_profiles.json');
 
+import { readJsonSafe, writeJsonAtomic } from '../utils/fileStorage.js';
+
 let cachedProfiles = null;
 let saveTimeout = null;
 
 function loadProfiles() {
-  try {
-    if (fs.existsSync(profilesFilePath)) {
-      cachedProfiles = JSON.parse(fs.readFileSync(profilesFilePath, 'utf-8'));
-    } else {
-      cachedProfiles = { members: {} };
-    }
-  } catch (err) {
-    console.error('[Member Profiles] Erro ao carregar arquivo de perfis:', err.message);
-    cachedProfiles = { members: {} };
-  }
+  cachedProfiles = readJsonSafe(profilesFilePath, { members: {} });
   if (!cachedProfiles.members) cachedProfiles.members = {};
   return cachedProfiles;
 }
@@ -28,13 +21,7 @@ function scheduleSave() {
   if (saveTimeout) return;
   saveTimeout = setTimeout(() => {
     saveTimeout = null;
-    try {
-      const dir = path.dirname(profilesFilePath);
-      if (!fs.existsSync(dir)) fs.mkdirSync(dir, { recursive: true });
-      fs.writeFileSync(profilesFilePath, JSON.stringify(cachedProfiles, null, 2), 'utf-8');
-    } catch (err) {
-      console.error('[Member Profiles] Erro ao salvar arquivo de perfis:', err.message);
-    }
+    writeJsonAtomic(profilesFilePath, cachedProfiles);
   }, 2000);
   if (saveTimeout && typeof saveTimeout.unref === 'function') {
     saveTimeout.unref();

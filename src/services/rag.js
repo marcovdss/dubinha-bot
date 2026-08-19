@@ -1,6 +1,7 @@
 import fs from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { readJsonSafe } from '../utils/fileStorage.js';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -86,36 +87,30 @@ export function loadDatasets() {
     // 1. Mensagens reais do histórico escaneado
     for (const file of files) {
       const filePath = path.join(dataDir, file);
-      try {
-        const data = JSON.parse(fs.readFileSync(filePath, 'utf-8'));
-        if (Array.isArray(data.messages)) {
-          allMsgs.push(...data.messages);
-        }
-        if (Array.isArray(data.dialogues)) {
-          allDialogues.push(...data.dialogues);
-        }
-      } catch (e) {}
+      const data = readJsonSafe(filePath, { messages: [], dialogues: [] });
+      if (Array.isArray(data.messages)) {
+        allMsgs.push(...data.messages);
+      }
+      if (Array.isArray(data.dialogues)) {
+        allDialogues.push(...data.dialogues);
+      }
     }
 
     // 2. Diálogos e frases de custom_memory.json
-    if (fs.existsSync(customMemoryPath)) {
-      try {
-        const customData = JSON.parse(fs.readFileSync(customMemoryPath, 'utf-8'));
-        if (Array.isArray(customData.phrases_and_dialogues)) {
-          for (const item of customData.phrases_and_dialogues) {
-            if (item.frase) {
-              allMsgs.unshift({ id: `custom_${item.frase}`, content: item.frase, channel: 'custom' });
-              if (item.contexto) {
-                allDialogues.unshift({
-                  otherUser: 'Amigo',
-                  otherMessage: item.contexto,
-                  targetResponse: item.frase
-                });
-              }
-            }
+    const customData = readJsonSafe(customMemoryPath, { phrases_and_dialogues: [] });
+    if (Array.isArray(customData.phrases_and_dialogues)) {
+      for (const item of customData.phrases_and_dialogues) {
+        if (item.frase) {
+          allMsgs.unshift({ id: `custom_${item.frase}`, content: item.frase, channel: 'custom' });
+          if (item.contexto) {
+            allDialogues.unshift({
+              otherUser: 'Amigo',
+              otherMessage: item.contexto,
+              targetResponse: item.frase
+            });
           }
         }
-      } catch (e) {}
+      }
     }
 
     cachedMessages = allMsgs;
