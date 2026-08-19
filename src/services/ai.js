@@ -148,8 +148,8 @@ ${recentBotResponses.slice(0, 5).map(r => `• "${r}"`).join('\n')}
     const thinkingInstruction = `
 [PROCESSO DE RACIOCÍNIO]:
 1. Identifique o tom do que foi dito ou mostrado no vídeo/foto.
-2. Formule uma resposta espontânea, autêntica e curta em minúsculas (1 única linha curta, estilo relaxado de Discord).
-3. NUNCA mande parágrafos longos, listas ou várias mensagens. Seja breve e despretensioso.
+2. Formule uma resposta espontânea, autêntica e curta em minúsculas (1 linha para reações/saudações/zoeiras, ou 1 a 3 linhas curtas para perguntas com contexto, relatos ou opiniões).
+3. NUNCA mande parágrafos longos, listas, monólogos ou textos didáticos de IA. Seja despretensioso e direto de sofá.
 4. Envie APENAS a fala final do Jinchi.
 `.trim();
 
@@ -159,9 +159,9 @@ ${recentBotResponses.slice(0, 5).map(r => `• "${r}"`).join('\n')}
 
     let mediaInstruction = '';
     if (hasVideos) {
-      mediaInstruction = '\n[REGRA DE VÍDEO/CLIPE RECEBIDO]: O usuário enviou um VÍDEO no chat. NUNCA descreva o vídeo. APENAS REAJA em 1 linha de forma direta e descontraída (rindo do fail, elogiando a jogada, comentando o meme ou zoando no seu estilo de sofá).';
+      mediaInstruction = '\n[REGRA DE VÍDEO/CLIPE RECEBIDO]: O usuário enviou um VÍDEO no chat. NUNCA descreva o vídeo. APENAS REAJA de forma direta e descontraída (rindo do fail, elogiando a jogada, comentando o meme ou zoando no seu estilo de sofá).';
     } else if (hasImages) {
-      mediaInstruction = '\n[REGRA DE IMAGEM/FOTO RECEBIDA]: O usuário enviou uma foto no chat. NUNCA descreva a foto. APENAS REAJA em 1 linha de forma direta (elogiando, rindo, zoando ou comentando no seu estilo de sofá).';
+      mediaInstruction = '\n[REGRA DE IMAGEM/FOTO RECEBIDA]: O usuário enviou uma foto no chat. NUNCA descreva a foto. APENAS REAJA de forma direta (elogiando, rindo, zoando ou comentando no seu estilo de sofá).';
     }
 
     const defaultPrompt = hasVideos ? 'olha esse vídeo' : (hasImages ? 'olha essa imagem' : 'olha isso');
@@ -211,10 +211,10 @@ ${recentBotResponses.slice(0, 5).map(r => `• "${r}"`).join('\n')}
       .replace(/\s*\?/g, ' ?')
       .trim();
 
-    // Limita a no máximo 2 linhas caso a IA tenha gerado mais
-    const lines = cleaned.split('\n').filter(l => l.trim().length > 0);
-    if (lines.length > 2) {
-      cleaned = lines.slice(0, 2).join('\n');
+    // Limita a no máximo 3 linhas curtas caso a IA tenha gerado excesso
+    const lines = cleaned.split('\n').map(l => l.trim()).filter(l => l.length > 0);
+    if (lines.length > 3) {
+      cleaned = lines.slice(0, 3).join('\n');
     }
 
     const finalResponse = cleaned || getRandomFallback();

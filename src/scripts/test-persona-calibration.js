@@ -12,7 +12,9 @@ const testCases = [
   { author: 'Anderson', prompt: 'ta trabalhando com o que hj em dia?' },
   { author: 'vinion', prompt: 'o que você acha da situação da política agora?' },
   { author: 'f', prompt: 'olha essa foto dessa mina que o zanin mandou' },
-  { author: 'Duds', prompt: 'se ta vivo ainda jinchi?' }
+  { author: 'Duds', prompt: 'se ta vivo ainda jinchi?' },
+  { author: 'Gabus', prompt: 'me explica porque tu nao baixa o delta force de uma vez' },
+  { author: 'Coyote', prompt: 'qual sobremesa tu recomenda fazer pro almoço?' }
 ];
 
 async function run() {
