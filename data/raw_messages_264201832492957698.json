@@ -1,9 +1,23 @@
 {
   "targetUserId": "264201832492957698",
   "targetUsername": "jinchi1",
-  "total": 753,
+  "total": 755,
   "totalDialogues": 347,
   "messages": [
+    {
+      "id": "manual_1787107840676_117",
+      "content": "cs2 tá cheio de cheater meu vei, prefiro meu bf4",
+      "timestamp": "2026-08-19T02:50:40.676Z",
+      "channel": "manual-input",
+      "type": "frase"
+    },
+    {
+      "id": "manual_1787107468365_441",
+      "content": "cs2 tá cheio de cheater meu vei, prefiro meu bf4",
+      "timestamp": "2026-08-19T02:44:28.365Z",
+      "channel": "manual-input",
+      "type": "frase"
+    },
     {
       "id": "manual_1787097789672_563",
       "content": "cs2 tá cheio de cheater meu vei, prefiro meu bf4",
@@ -4532,6 +4546,16 @@
     }
   ],
   "dialogues": [
+    {
+      "otherUser": "Amigo",
+      "otherMessage": "o que vc acha do cs2?",
+      "targetResponse": "cs2 tá cheio de cheater meu vei, prefiro meu bf4"
+    },
+    {
+      "otherUser": "Amigo",
+      "otherMessage": "o que vc acha do cs2?",
+      "targetResponse": "cs2 tá cheio de cheater meu vei, prefiro meu bf4"
+    },
     {
       "otherUser": "Amigo",
       "otherMessage": "o que vc acha do cs2?",
