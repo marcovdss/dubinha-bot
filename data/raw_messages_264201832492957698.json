@@ -1,9 +1,16 @@
 {
   "targetUserId": "264201832492957698",
   "targetUsername": "jinchi1",
-  "total": 752,
+  "total": 753,
   "totalDialogues": 347,
   "messages": [
+    {
+      "id": "manual_1787097789672_563",
+      "content": "cs2 tá cheio de cheater meu vei, prefiro meu bf4",
+      "timestamp": "2026-08-19T00:03:09.672Z",
+      "channel": "manual-input",
+      "type": "frase"
+    },
     {
       "id": "manual_1787024956923_588",
       "content": "Alguns membros do Discord costumam comparar o Dubinha a uma pessoa que recebe tapas na nádegas de um palhaço em um curto vídeo.  O vídeo se passa em uma cozinha e a pessoa que recebe tapas parece estar coberta de farinha. Há certa semelhança física e comicidade considerando o interesse de Dubinha por confeitaria.",
@@ -4525,6 +4532,11 @@
     }
   ],
   "dialogues": [
+    {
+      "otherUser": "Amigo",
+      "otherMessage": "o que vc acha do cs2?",
+      "targetResponse": "cs2 tá cheio de cheater meu vei, prefiro meu bf4"
+    },
     {
       "otherUser": "Coyote",
       "otherMessage": "@Dubinha joga delta com o cara mano",

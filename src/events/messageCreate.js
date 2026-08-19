@@ -6,6 +6,7 @@ import { recordLiveMessage } from '../services/learning.js';
 import { trackMemberActivity, getAllActiveSessionSummaries } from '../services/sessionMemory.js';
 import { inspectLiveFact } from '../services/episodicMemory.js';
 import { extractUrlContext } from '../utils/urlHelper.js';
+import { enqueueCognitiveInspection, reinforceSuccessfulDialogue } from '../services/cognitiveLearning.js';
 
 export const name = Events.MessageCreate;
 export const once = false;
@@ -34,9 +35,26 @@ export async function execute(message) {
   trackMemberActivity(message.author.id, authorName, message.cleanContent);
   inspectLiveFact(authorName, message.cleanContent);
 
+  // 0.2 Aprendizado Cognitivo em Background (analisa contexto, fatos sobre membros e correções)
+  enqueueCognitiveInspection({
+    authorName,
+    content: message.cleanContent,
+    channelName: message.channel.name || 'chat'
+  });
+
   const channelId = message.channel.id;
   const targetChannelId = config.discord.targetChannelId;
   const contentLower = message.cleanContent.toLowerCase();
+
+  // 0.3 Reforço Social: Se alguém responder ao bot rindo da piada, grava o diálogo como sucesso
+  const isReplyToBot = message.reference && message.mentions.repliedUser?.id === message.client.user.id;
+  if (isReplyToBot && /^(?:k+|ha+|rs+|kk+|pqp|boa\s+duba|genial|morri|rachando|😂|🤣|🔥|💀)/i.test(contentLower)) {
+    message.channel.messages.fetch(message.reference.messageId).then(refMsg => {
+      if (refMsg && refMsg.cleanContent) {
+        reinforceSuccessfulDialogue('resenha do chat', refMsg.cleanContent, `Risada de @${authorName}`);
+      }
+    }).catch(() => null);
+  }
 
   // Atualiza contador de mensagens humanas no canal
   const stats = channelStats.get(channelId) || { lastReplyTime: 0, messagesSinceLastReply: 0 };
@@ -49,9 +67,6 @@ export async function execute(message) {
 
   // 1. Menção direta com @ (@Dubinha) -> 100% de resposta imediata
   const isDirectMention = message.mentions.has(message.client.user);
-
-  // 2. Resposta direta a uma mensagem do bot (Reply) -> 100% de resposta
-  const isReplyToBot = message.reference && message.mentions.repliedUser?.id === message.client.user.id;
 
   // 3. Menção textual pelo nome ("jinchi", "dubinha", "duba", "jinchin", "dubao", etc.)
   const aliasRegex = /\b(dubinha[s]?|duba[s]?|dubin[s]?|dub[aã]o|dube[s]?|dubis|jinchi[s]?|jinch[eoa]?|jinchin[s]?|jinch[aã]o|jinsh[io]|ginchi)\b/i;
@@ -89,12 +104,15 @@ export async function execute(message) {
       shouldReply = Math.random() < 0.85;
     }
   } else if (isInTargetChannel) {
-    // Mensagem solta de texto dos outros membros (Modo Intrometido): 35% de chance com cooldown de 15s
-    const meetsCooldown = timeSinceLastReply > 15000;
-    const meetsActivity = stats.messagesSinceLastReply >= 1;
+    // Mensagem solta de texto dos outros membros (Modo Introsa)
+    const cooldownMs = (config.behavior.cooldownSeconds ?? 25) * 1000;
+    const minMessages = config.behavior.minHumanMessages ?? 1;
+    const meetsCooldown = timeSinceLastReply > cooldownMs;
+    const meetsActivity = stats.messagesSinceLastReply >= minMessages;
+    const probability = config.behavior.replyProbability ?? 0.25;
 
-    if (meetsCooldown && meetsActivity) {
-      shouldReply = Math.random() < 0.35;
+    if (meetsCooldown && meetsActivity && probability > 0) {
+      shouldReply = Math.random() < probability;
     }
   }
 

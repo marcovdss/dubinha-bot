@@ -1,5 +1,5 @@
 import readline from 'node:readline';
-import { config } from '../config/env.js';
+import { config, normalizeProbability } from '../config/env.js';
 import { generatePersonaResponse } from './ai.js';
 import { splitMessageIntoChunks } from '../utils/messageSender.js';
 import { triggerPizzaEvent } from './randomEvents.js';
@@ -42,7 +42,7 @@ export function startTerminalInput(client) {
     prompt: '💬 jinchi> '
   });
 
-  console.log(`💬 [Terminal God Mode] Online • /pizza, /aprender <frase> ou digite para enviar.`);
+  console.log(`💬 [Terminal God Mode] Online • /introsa <chance>, /pizza, /aprender <frase> ou digite para enviar.`);
   rl.prompt();
 
   rl.on('line', async (line) => {
@@ -56,6 +56,20 @@ export function startTerminalInput(client) {
       const channel = await getTargetChannel(client);
       if (!channel) {
         console.error('❌ Nenhum canal de texto encontrado para enviar a mensagem.');
+        rl.prompt();
+        return;
+      }
+
+      // 0. Comando interno: /introsa ou /chance <valor>
+      if (input.toLowerCase().startsWith('/introsa') || input.toLowerCase().startsWith('/chance')) {
+        const parts = input.split(/\s+/);
+        if (parts.length > 1) {
+          const val = parts.slice(1).join(' ');
+          config.behavior.replyProbability = normalizeProbability(val, config.behavior.replyProbability);
+          console.log(`🎲 [Modo Introsa Atualizado] Chance de resposta espontânea: ${(config.behavior.replyProbability * 100).toFixed(1)}%`);
+        } else {
+          console.log(`🎲 [Modo Introsa] Chance atual: ${(config.behavior.replyProbability * 100).toFixed(1)}% | Cooldown: ${config.behavior.cooldownSeconds}s`);
+        }
         rl.prompt();
         return;
       }

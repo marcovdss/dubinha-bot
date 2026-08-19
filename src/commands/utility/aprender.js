@@ -53,7 +53,8 @@ export async function execute(interaction) {
     reply += `\n💾 *Salvo permanentemente em \`data/custom_memory.json\` e ativo na persona do bot a partir de agora!*`;
 
     await interaction.reply({
-      content: reply
+      content: reply,
+      ephemeral: true
     });
   } else {
     await interaction.reply({

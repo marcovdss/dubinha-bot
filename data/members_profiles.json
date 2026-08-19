@@ -1,0 +1,86 @@
+{
+  "members": {
+    "Zanin": {
+      "name": "Zanin",
+      "aliases": ["zanin", "zanin1", "zan"],
+      "games": ["Battlefield 4", "Delta Force", "Steam"],
+      "facts": [
+        "amigo de longa data do Jinchi",
+        "comprou vários jogos na promoção da Steam e quase nunca joga",
+        "parceiro de BF4",
+        "vive trocando prints e zoando o Jinchi"
+      ],
+      "socialDynamic": "parceiro de longa data, troca zoeiras constantes e joga BF4"
+    },
+    "f": {
+      "name": "f",
+      "aliases": ["f", "fe", "effe"],
+      "games": ["Counter-Strike", "CS2", "Mods"],
+      "facts": [
+        "parceiro de memes de Lothlórien e mods de CS",
+        "adora resenhar sobre comida",
+        "sempre que fala de mandioca o Jinchi lembra que é macaxeira"
+      ],
+      "socialDynamic": "parceiro de memes bizarros, novidades, gastronomia e mods"
+    },
+    "Coyote": {
+      "name": "Coyote",
+      "aliases": ["coyote", "coyotão", "coyo"],
+      "games": ["Delta Force", "Battlefield", "FPS"],
+      "facts": [
+        "sempre acompanha atualizações e patches de games",
+        "chama o Jinchi pra jogar Delta Force",
+        "amigo de longa data"
+      ],
+      "socialDynamic": "amigo de jogos de tiro e atualizações de games"
+    },
+    "vinion": {
+      "name": "vinion",
+      "aliases": ["vinion", "vini", "vinicius"],
+      "games": ["World of Warcraft", "RPG"],
+      "facts": [
+        "gosta de puxar debates sobre política, streamers e eleições",
+        "troca ideias sobre WoW e classes"
+      ],
+      "socialDynamic": "debates sobre política, streams, zoeiras de aura e games"
+    },
+    "vapula": {
+      "name": "vapula",
+      "aliases": ["vapula", "vap"],
+      "games": ["PC Games"],
+      "facts": [
+        "troca comentários ácidos e irônicos sobre a situação do país e política"
+      ],
+      "socialDynamic": "resenhas sobre política e zoeiras ácidas do servidor"
+    },
+    "Anderson": {
+      "name": "Anderson",
+      "aliases": ["anderson", "ander"],
+      "games": ["Delta Force", "Jogos Co-op"],
+      "facts": [
+        "chama o Jinchi pra jogar direto no chat",
+        "quase sempre recebe resposta com preguiça do Jinchi"
+      ],
+      "socialDynamic": "convites de jogos e respostas secas e diretas"
+    },
+    "Gabus": {
+      "name": "Gabus",
+      "aliases": ["gabus", "gabu"],
+      "games": ["Battlefield 6", "Lançamentos"],
+      "facts": [
+        "tem setup de PC potente",
+        "Jinchi zoa pedindo empréstimo de placa de vídeo ou jogo novo na Steam"
+      ],
+      "socialDynamic": "zoeiras de setup e compras de jogos"
+    },
+    "Samurai": {
+      "name": "Samurai",
+      "aliases": ["samurai", "samu"],
+      "games": ["PC Games"],
+      "facts": [
+        "montou setup com iluminação RGB e periféricos que o Jinchi elogiou"
+      ],
+      "socialDynamic": "elogios a setups e periféricos de computador"
+    }
+  }
+}

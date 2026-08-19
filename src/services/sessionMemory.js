@@ -1,12 +1,77 @@
+import fs from 'node:fs';
+import path from 'node:path';
+import { fileURLToPath } from 'node:url';
+
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = path.dirname(__filename);
+const sessionFilePath = path.join(__dirname, '../../data/session_memory.json');
+
 /**
  * Memória de Sessão & Trabalho de Curto Prazo (Working Memory)
  * Rastreia tópicos recentes, desabafos, jogos e comentários de cada membro no servidor
+ * com persistência automática em disco para não esquecer após reinicializações.
  */
 
 const memberSessions = new Map();
 
-// Expiração de memória de curto prazo após 6 horas
-const SESSION_TTL_MS = 6 * 60 * 60 * 1000;
+// Expiração de memória de curto prazo após 12 horas
+const SESSION_TTL_MS = 12 * 60 * 60 * 1000;
+
+let saveTimeout = null;
+
+function loadSessionsFromFile() {
+  try {
+    if (fs.existsSync(sessionFilePath)) {
+      const data = JSON.parse(fs.readFileSync(sessionFilePath, 'utf-8'));
+      const now = Date.now();
+      if (Array.isArray(data.sessions)) {
+        for (const s of data.sessions) {
+          if (s.userId && s.lastActive && now - s.lastActive < SESSION_TTL_MS * 2) {
+            memberSessions.set(s.userId, {
+              authorName: s.authorName,
+              topics: Array.isArray(s.topics) ? s.topics.filter(t => now - t.timestamp < SESSION_TTL_MS) : [],
+              lastActive: s.lastActive
+            });
+          }
+        }
+      }
+    }
+  } catch (err) {
+    console.error('[Session Memory] Erro ao carregar arquivo de sessão:', err.message);
+  }
+}
+
+function scheduleSave() {
+  if (saveTimeout) return;
+  saveTimeout = setTimeout(() => {
+    saveTimeout = null;
+    try {
+      const dir = path.dirname(sessionFilePath);
+      if (!fs.existsSync(dir)) fs.mkdirSync(dir, { recursive: true });
+      const now = Date.now();
+      const sessions = [];
+      for (const [userId, session] of memberSessions.entries()) {
+        if (now - session.lastActive < SESSION_TTL_MS * 2) {
+          sessions.push({
+            userId,
+            authorName: session.authorName,
+            topics: session.topics.filter(t => now - t.timestamp < SESSION_TTL_MS),
+            lastActive: session.lastActive
+          });
+        }
+      }
+      fs.writeFileSync(sessionFilePath, JSON.stringify({ sessions, updatedAt: new Date().toISOString() }, null, 2), 'utf-8');
+    } catch (err) {
+      console.error('[Session Memory] Erro ao salvar arquivo de sessão:', err.message);
+    }
+  }, 3000);
+  if (saveTimeout && typeof saveTimeout.unref === 'function') {
+    saveTimeout.unref();
+  }
+}
+
+// Carrega na inicialização
+loadSessionsFromFile();
 
 /**
  * Registra atividade relevante de um membro na memória de sessão
@@ -19,7 +84,7 @@ export function trackMemberActivity(userId, authorName, text) {
 
   const now = Date.now();
   const clean = text.trim();
-  if (clean.length < 5) return;
+  if (clean.length < 3) return;
 
   let session = memberSessions.get(userId);
   if (!session) {
@@ -33,17 +98,18 @@ export function trackMemberActivity(userId, authorName, text) {
   session.authorName = authorName;
   session.lastActive = now;
 
-  // Adiciona a fala recente (mantém até 8 falas por membro)
+  // Adiciona a fala recente (mantém até 12 falas por membro para mais profundidade)
   session.topics.push({
     text: clean,
     timestamp: now
   });
 
-  if (session.topics.length > 8) {
+  if (session.topics.length > 12) {
     session.topics.shift();
   }
 
   memberSessions.set(userId, session);
+  scheduleSave();
 }
 
 /**
@@ -57,12 +123,11 @@ export function getMemberSessionSummary(userId) {
   const session = memberSessions.get(userId);
   if (!session) return '';
 
-  // Limpa tópicos expirados
   const recentTopics = session.topics.filter(t => now - t.timestamp < SESSION_TTL_MS);
   if (recentTopics.length === 0) return '';
 
   return recentTopics
-    .slice(-4)
+    .slice(-5)
     .map(t => `"${t.text}"`)
     .join(' | ');
 }
@@ -76,7 +141,6 @@ export function getAllActiveSessionSummaries() {
   const activeEntries = [];
 
   for (const [userId, session] of memberSessions.entries()) {
-    // Remove sessões antigas para liberar memória
     if (now - session.lastActive > SESSION_TTL_MS * 2) {
       memberSessions.delete(userId);
       continue;
@@ -85,8 +149,8 @@ export function getAllActiveSessionSummaries() {
     if (now - session.lastActive < SESSION_TTL_MS) {
       const recent = session.topics.filter(t => now - t.timestamp < SESSION_TTL_MS);
       if (recent.length > 0) {
-        const lastFew = recent.slice(-3).map(t => `"${t.text}"`).join(', ');
-        activeEntries.push(`- @${session.authorName} comentou recentemente: ${lastFew}`);
+        const lastFew = recent.slice(-4).map(t => `"${t.text}"`).join(', ');
+        activeEntries.push(`- @${session.authorName} comentou hoje: ${lastFew}`);
       }
     }
   }

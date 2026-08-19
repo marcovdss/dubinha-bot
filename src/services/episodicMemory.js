@@ -36,7 +36,7 @@ function saveMemoryFile() {
 }
 
 /**
- * Busca memórias de longo prazo sobre o interlocutor ou o assunto
+ * Busca memórias de longo prazo sobre o interlocutor, outros membros ou sobre a vida do Jinchi
  * @param {string} userName - Nome do interlocutor
  * @param {string} query - Mensagem atual
  * @returns {string[]}
@@ -48,41 +48,64 @@ export function getEpisodicMemories(userName = '', query = '') {
   if (events.length === 0) return [];
 
   const cleanUser = userName.toLowerCase().trim();
-  const cleanQuery = query.toLowerCase().trim();
+  const cleanQuery = query.toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '').trim();
+  const queryTokens = cleanQuery.split(/[^\w]+/).filter(w => w.length >= 3);
 
-  const matches = [];
+  const matchedSet = new Set();
+  const results = [];
 
   for (const item of events) {
     const itemUser = (item.user || '').toLowerCase();
     const itemFact = (item.fact || '').toLowerCase();
+    const itemNormalized = itemFact.normalize('NFD').replace(/[\u0300-\u036f]/g, '');
 
-    // Match por usuário
+    // 1. Match direto pelo usuário que está conversando
     if (cleanUser && itemUser && (itemUser === cleanUser || itemUser.includes(cleanUser) || cleanUser.includes(itemUser))) {
-      matches.push(`[Sobre @${item.user}]: ${item.fact}`);
+      const entry = `[Memória sobre @${item.user}]: ${item.fact}`;
+      if (!matchedSet.has(entry)) {
+        matchedSet.add(entry);
+        results.push(entry);
+      }
       continue;
     }
 
-    // Match por palavra-chave no assunto
-    if (cleanQuery && itemFact.split(/\s+/).some(w => w.length > 3 && cleanQuery.includes(w))) {
-      matches.push(`[Fato Histórico sobre @${item.user}]: ${item.fact}`);
+    // 2. Se a conversa citar outro membro pelo nome (ex: Zanin, Coyote, f, etc.)
+    if (itemUser && cleanQuery.includes(itemUser)) {
+      const entry = `[Memória Histórica sobre @${item.user}]: ${item.fact}`;
+      if (!matchedSet.has(entry)) {
+        matchedSet.add(entry);
+        results.push(entry);
+      }
+      continue;
+    }
+
+    // 3. Match por palavras-chave relevantes no assunto (jogos, teclado, culinária, avó, comida, setup, etc.)
+    const matchesKeyword = queryTokens.some(token => itemNormalized.includes(token));
+    if (matchesKeyword) {
+      const isJinchiSelf = itemUser === 'jinchi' || itemUser === 'dubinha';
+      const label = isJinchiSelf ? `[Lembrança da sua própria vida (${item.topic || 'história'})]` : `[Fato sobre @${item.user}]`;
+      const entry = `${label}: ${item.fact}`;
+      if (!matchedSet.has(entry)) {
+        matchedSet.add(entry);
+        results.push(entry);
+      }
     }
   }
 
-  // Retorna até 4 memórias mais relevantes
-  return matches.slice(0, 4);
+  // Retorna até 6 memórias relevantes
+  return results.slice(0, 6);
 }
 
 /**
  * Grava uma nova memória episódica permanente no arquivo
  * @param {string} user - Nome do usuário
  * @param {string} fact - O acontecimento ou fato
- * @param {string} topic - Categoria (ex: 'vida', 'games', 'hardware', 'trabalho')
+ * @param {string} topic - Categoria (ex: 'vida', 'games', 'hardware', 'trabalho', 'culinaria')
  */
 export function recordEpisodicFact(user, fact, topic = 'geral') {
   const data = cachedEpisodic || loadMemoryFile();
   if (!data.episodic_events) data.episodic_events = [];
 
-  // Evita duplicatas exatas
   const exists = data.episodic_events.some(
     e => e.user.toLowerCase() === user.toLowerCase() && e.fact.toLowerCase() === fact.toLowerCase()
   );
@@ -102,24 +125,40 @@ export function recordEpisodicFact(user, fact, topic = 'geral') {
 }
 
 /**
- * Analisador heurístico leve para identificar fatos relevantes em mensagens do chat
+ * Analisador heurístico expandido para identificar fatos e preferências relevantes em mensagens do chat
  * @param {string} userName
  * @param {string} content
  */
 export function inspectLiveFact(userName, content) {
-  if (!content || content.length < 15 || !userName) return;
+  if (!content || content.length < 8 || !userName) return;
 
-  const text = content.toLowerCase();
+  const text = content.toLowerCase().trim();
 
-  // Padrões de fatos cotidianos revelados por membros
-  if (/comprei\s+(?:um|uma|o|a)\s+([a-zA-Z0-9\s]{4,30})/i.test(text)) {
-    const match = text.match(/comprei\s+(?:um|uma|o|a)\s+([a-zA-Z0-9\s]{4,30})/i);
+  // 1. Compras e aquisições
+  if (/comprei\s+(?:um|uma|o|a)\s+([a-zA-Z0-9\s]{3,35})/i.test(text)) {
+    const match = text.match(/comprei\s+(?:um|uma|o|a)\s+([a-zA-Z0-9\s]{3,35})/i);
     if (match) recordEpisodicFact(userName, `comprou ${match[1].trim()}`, 'compras');
-  } else if (/meu\s+(pc|computador|fone|mouse|teclado|carro)\s+(queimou|estragou|parou|quebrou)/i.test(text)) {
-    const match = text.match(/meu\s+(pc|computador|fone|mouse|teclado|carro)\s+(queimou|estragou|parou|quebrou)/i);
-    if (match) recordEpisodicFact(userName, `o ${match[1]} dele ${match[2]}`, 'hardware');
-  } else if (/vou\s+(viajar|mudar|trabalhar|sair|dormir)/i.test(text)) {
-    const match = text.match(/vou\s+(viajar|mudar|trabalhar|sair|dormir)\s*([^.,!]{0,25})/i);
+  }
+  // 2. Hardware ou periféricos com problemas / novos
+  else if (/(?:meu|minha)\s+(pc|computador|placa|gpu|fone|headset|mouse|teclado|carro|celular)\s+(queimou|estragou|parou|quebrou|chegou|novo|nova)/i.test(text)) {
+    const match = text.match(/(?:meu|minha)\s+(pc|computador|placa|gpu|fone|headset|mouse|teclado|carro|celular)\s+(queimou|estragou|parou|quebrou|chegou|novo|nova)/i);
+    if (match) recordEpisodicFact(userName, `o/a ${match[1]} dele(a) ${match[2]}`, 'hardware');
+  }
+  // 3. Planos e vida pessoal
+  else if (/(?:vou|to indo|pretendo)\s+(viajar|mudar|trabalhar|sair|dormir|estudar|casar|treinar)/i.test(text)) {
+    const match = text.match(/(?:vou|to indo|pretendo)\s+(viajar|mudar|trabalhar|sair|dormir|estudar|casar|treinar)\s*([^.,!]{0,30})/i);
     if (match) recordEpisodicFact(userName, `comentou que vai ${match[1]} ${match[2] || ''}`.trim(), 'vida');
+  }
+  // 4. Jogos que a pessoa está jogando
+  else if (/(?:to jogando|baixei|viciado em|jogando|instalou)\s+([a-zA-Z0-9\s]{3,25})/i.test(text)) {
+    const match = text.match(/(?:to jogando|baixei|viciado em|jogando|instalou)\s+([a-zA-Z0-9\s]{3,25})/i);
+    if (match && !['nada', 'aqui', 'agora', 'com'].includes(match[1].trim())) {
+      recordEpisodicFact(userName, `está jogando ${match[1].trim()}`, 'games');
+    }
+  }
+  // 5. Preferências marcantes de comida / gostos
+  else if (/(?:meu prato favorito|comida favorita|amo|adoro|odeio|detesto)\s+([a-zA-Z0-9\s]{3,25})/i.test(text)) {
+    const match = text.match(/(?:meu prato favorito|comida favorita|amo|adoro|odeio|detesto)\s+([a-zA-Z0-9\s]{3,25})/i);
+    if (match) recordEpisodicFact(userName, `gosto/opinião: ${match[0].trim()}`, 'culinaria');
   }
 }

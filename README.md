@@ -67,6 +67,7 @@ npm start
 | `/pular` | Pula para a próxima da fila |
 | `/fila` | Mostra as próximas músicas |
 | `/parar` | Para a reprodução e sai da call |
+| `/introsa [chance] [cooldown]` | Regula ou exibe a chance do bot se intrometer nas conversas (Modo Introsa) |
 | `/pizza <alvo> <sabor> <valor>` | Cobra o PIX da pizza da galera |
 | `/aprender <instrução>` | Ensina um fato, memória ou regra nova pro bot |
 | `/ping` | Mostra a latência do bot |

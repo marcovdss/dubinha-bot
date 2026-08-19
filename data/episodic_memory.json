@@ -2,27 +2,117 @@
   "episodic_events": [
     {
       "user": "Zanin",
-      "fact": "comprou jogos na promoção da Steam e não jogou",
+      "fact": "comprou um monte de jogos na promoção da Steam e deixou quase todos mofando na biblioteca sem jogar",
       "date": "2026-07-28",
       "topic": "games"
     },
     {
       "user": "Zanin",
-      "fact": "joga Battlefield 4 com o Jinchi",
+      "fact": "é o parceiro mais antigo de Battlefield 4 e vive trocando zoeiras de jogos e prints",
       "date": "2026-07-28",
       "topic": "games"
     },
     {
       "user": "f",
-      "fact": "parceiro de mods de CS e memes",
+      "fact": "parceiro de mods de CS, clipes doidos de internet, memes de Lothlórien e resenhas gastronômicas",
       "date": "2026-07-20",
       "topic": "games"
     },
     {
+      "user": "f",
+      "fact": "sempre que fala de mandioca o Jinchi corrige lembrando que o certo é 'macaxeira vei'",
+      "date": "2026-07-22",
+      "topic": "culinaria"
+    },
+    {
       "user": "vinion",
-      "fact": "sempre debate sobre política e zoeiras de aura",
+      "fact": "sempre puxa debate sobre política, memes de streamers, eleições e zoeiras de aura",
       "date": "2026-08-07",
       "topic": "politica"
+    },
+    {
+      "user": "Coyote",
+      "fact": "sempre avisa sobre patches, atualizações e convida o Jinchi pra jogar Delta Force e outros jogos",
+      "date": "2026-08-01",
+      "topic": "games"
+    },
+    {
+      "user": "vapula",
+      "fact": "troca resenhas ácidas sobre o cenário político do país e ri das bizarrices do chat",
+      "date": "2026-08-05",
+      "topic": "politica"
+    },
+    {
+      "user": "Anderson",
+      "fact": "chama o Jinchi pra jogar direto mas o Jinchi quase sempre responde na preguiça dizendo que joga depois",
+      "date": "2026-08-02",
+      "topic": "games"
+    },
+    {
+      "user": "Gabus",
+      "fact": "tem setup forte e o Jinchi vive zoando pedindo empréstimo de placa de vídeo ou jogo novo na Steam",
+      "date": "2026-08-04",
+      "topic": "hardware"
+    },
+    {
+      "user": "Samurai",
+      "fact": "montou um setup com RGB e teclado responsivo que o Jinchi elogiou como 'nice setup'",
+      "date": "2026-08-03",
+      "topic": "hardware"
+    },
+    {
+      "user": "Quasi_Nada",
+      "fact": "comenta os patch notes e novidades de games com o Jinchi",
+      "date": "2026-08-06",
+      "topic": "games"
+    },
+    {
+      "user": "Duds",
+      "fact": "troca piadas sobre idade, história do servidor e comparações engraçadas",
+      "date": "2026-08-08",
+      "topic": "social"
+    },
+    {
+      "user": "jinchi",
+      "fact": "já fez um curso presencial de confeitaria e culinária com moças legais da turma, mas é preguiçoso pra cozinhar em casa",
+      "date": "2026-06-15",
+      "topic": "culinaria"
+    },
+    {
+      "user": "jinchi",
+      "fact": "tem uma avó idosa que sempre pergunta as horas pra ele repetidamente, o que deixa ele impaciente por dentro mas ele responde com respeito",
+      "date": "2026-06-20",
+      "topic": "familia"
+    },
+    {
+      "user": "jinchi",
+      "fact": "comprou um teclado mecânico extremamente barulhento cujas marretadas já renderam reclamações da mãe",
+      "date": "2026-07-10",
+      "topic": "hardware"
+    },
+    {
+      "user": "jinchi",
+      "fact": "ama delícia de abacaxi e pizza de calabresa/pepperoni, mas não liga pra miojo e defende macaxeira frita com unhas e dentes",
+      "date": "2026-07-15",
+      "topic": "culinaria"
+    },
+    {
+      "user": "jinchi",
+      "fact": "joga World of Warcraft em ciclos eternos de baixar, upar, fazer as quests novas e depois desinstalar pra não viciar de novo",
+      "date": "2026-07-25",
+      "topic": "games"
+    },
+    {
+      "user": "jinchi",
+      "fact": "considera Battlefield 4 o ápice dos FPS e zomba de quem compra lançamentos caros da EA/DICE pra passar raiva",
+      "date": "2026-07-26",
+      "topic": "games"
+    },
+    {
+      "user": "jinchi",
+      "fact": "quase comprou um SSD de 240GB dedicado só pra conseguir instalar e jogar Delta Force com o pessoal",
+      "date": "2026-08-01",
+      "topic": "hardware"
     }
   ]
 }

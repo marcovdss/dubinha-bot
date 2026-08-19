@@ -3,8 +3,21 @@ import { config } from '../config/env.js';
 import { buildSystemPrompt, personaConfig } from '../config/persona.js';
 import { searchKnowledgeBase } from './rag.js';
 import { getEpisodicMemories } from './episodicMemory.js';
+import { formatMemberDossierForPrompt } from './memberProfiles.js';
 
 let aiClient = null;
+
+// Buffer em memória com as últimas falas geradas pelo bot para evitar repetições consecutivas
+const recentBotResponses = [];
+const MAX_RECENT_BOT_RESPONSES = 8;
+
+function recordBotResponse(text) {
+  if (!text) return;
+  recentBotResponses.unshift(text);
+  if (recentBotResponses.length > MAX_RECENT_BOT_RESPONSES) {
+    recentBotResponses.pop();
+  }
+}
 
 function getAIClient() {
   const apiKey = config.gemini.apiKey;
@@ -46,7 +59,7 @@ function getTemporalContext() {
 }
 
 /**
- * Gera uma resposta na voz e persona do Dubinha com raciocínio cognitivo profundo e visão multimodal (fotos e vídeos)
+ * Gera uma resposta na voz e persona do Dubinha com raciocínio cognitivo profundo, anti-repetição e visão multimodal
  * @param {string} userPrompt - Mensagem do usuário
  * @param {Array<{author: string, content: string}>} recentHistory - Histórico recente de mensagens do canal
  * @param {string} authorName - Nome do autor da mensagem (opcional)
@@ -75,30 +88,30 @@ export async function generatePersonaResponse(
     // 1. Contexto Temporal em Tempo Real
     const temporalContext = getTemporalContext();
 
-    // 2. Memória Episódica Permanente de Longo Prazo
+    // 2. Memória Episódica Permanente de Longo Prazo (sobre membros e a vida do Jinchi)
     const episodicFacts = getEpisodicMemories(targetAuthor, userPrompt);
     let episodicBlock = '';
     if (episodicFacts.length > 0) {
-      episodicBlock = `\n[MEMÓRIAS HISTÓRICAS PERMANENTES DESTE SERVIDOR]:\n${episodicFacts.join('\n')}\n\n`;
+      episodicBlock = `\n[MEMÓRIAS HISTÓRICAS PERMANENTES DESTE SERVIDOR & DA SUA VIDA]:\n${episodicFacts.join('\n')}\n\n`;
     }
 
-    // 3. Busca semântica RAG no histórico de mensagens do Jinchi
-    const { relevantMessages, relevantDialogues } = searchKnowledgeBase(userPrompt, recentHistory, 6);
+    // 3. Busca semântica RAG rica no histórico real de mensagens do Jinchi
+    const { relevantMessages, relevantDialogues } = searchKnowledgeBase(userPrompt, recentHistory, 8);
 
     let ragContext = '';
     if (relevantDialogues.length > 0 || relevantMessages.length > 0) {
-      ragContext = `\n[MEMÓRIAS, FATOS & HISTÓRICO DA SUA VIDA - INCORPORE EM 1ª PESSOA ("EU")]:\n`;
+      ragContext = `\n[MEMÓRIAS, FATOS & HISTÓRICO DA SUA VIDA - USE EM 1ª PESSOA ("EU")]:\n`;
       if (relevantDialogues.length > 0) {
-        ragContext += `Diálogos que você já teve no passado:\n` +
+        ragContext += `Diálogos que você já teve no passado (exemplos de estilo):\n` +
           relevantDialogues.map(d => `- ${d.user}\n  Você (${personaConfig.name}): "${d.duba}"`).join('\n') + '\n\n';
       }
       if (relevantMessages.length > 0) {
-        ragContext += `Fatos e coisas que você já viveu ou falou (lembre-se disso em 1ª pessoa):\n` +
+        ragContext += `Coisas reais que você já falou ou viveu:\n` +
           relevantMessages.map(m => `- "${m}"`).join('\n') + '\n\n';
       }
     }
 
-    // 4. Memória de Sessão de Curto Prazo (últimas 6 horas)
+    // 4. Memória de Sessão de Curto Prazo persistida
     const sessionBlock = extraContext.sessionSummary ? `${extraContext.sessionSummary}\n` : '';
 
     // 5. Contexto de Links/URLs (se houver)
@@ -119,16 +132,28 @@ export async function generatePersonaResponse(
       contextText = `\n[HISTÓRICO RECENTE DA CONVERSA NO CANAL]\n${contextText}\n\n`;
     }
 
-    // 9. Instrução de Reflexão e Raciocínio Silencioso (Chain-of-Thought)
+    // 9. DIRETIVA ANTI-REPETIÇÃO E HISTÓRICO DE RESPOSTAS DO PRÓPRIO BOT
+    let antiRepetitionBlock = '';
+    if (recentBotResponses.length > 0) {
+      antiRepetitionBlock = `\n[SUAS ÚLTIMAS RESPOSTAS RECENTES NO CHAT (NÃO REPITA)]:
+${recentBotResponses.slice(0, 5).map(r => `• "${r}"`).join('\n')}
+[REGRA CRÍTICA DE VARIEDADE]: É PROIBIDO começar a nova mensagem com a mesma frase/gíria das respostas acima ou repetir a mesma piada! Traga um vocabulário novo, outra observação ou um ângulo diferente para enriquecer o diálogo.\n\n`;
+    }
+
+    // 10. Dossiê do Interlocutor (jogos, hábitos e fatos conhecidos sobre a pessoa que está falando)
+    const memberDossierText = formatMemberDossierForPrompt(targetAuthor);
+    const memberDossierBlock = memberDossierText ? `\n${memberDossierText}\n` : '';
+
+    // 11. Instrução de Reflexão e Raciocínio Silencioso (Chain-of-Thought)
     const thinkingInstruction = `
 [PROCESSO DE RACIOCÍNIO INTERNO ANTES DE FALAR]:
-1. Identifique a intenção e tom do que foi dito ou mostrado no vídeo/foto (zoeira, fail, jogada, desabafo, convite, ironia).
-2. Lembre-se da sua postura genuína (Jinchi é calmo, direto, preguiçoso, nunca se desculpa, joga BF4/WoW, defende macaxeira).
-3. Formule a resposta orgânica em minúsculas com gírias naturais (meu vei, mano, caba, doidera vei).
-4. No final, envie APENAS a fala final do Jinchi.
+1. Identifique o tema central, a zoeira ou o tom do que foi dito ou mostrado no vídeo/foto.
+2. Acesse suas memórias históricas, o dossiê do interlocutor ou a memória de sessão caso o assunto tenha relação.
+3. Formule uma resposta espontânea, variada e autêntica em minúsculas, evitando repetir o que você disse há pouco.
+4. Envie APENAS a fala final do Jinchi.
 `.trim();
 
-    // 10. Instrução Específica para Mídias (Vídeos e Fotos)
+    // 12. Instrução Específica para Mídias (Vídeos e Fotos)
     const hasVideos = mediaBuffers.some(m => m.isVideo || m.mimeType?.startsWith('video/'));
     const hasImages = mediaBuffers.some(m => !m.isVideo && m.mimeType?.startsWith('image/'));
 
@@ -140,7 +165,7 @@ export async function generatePersonaResponse(
     }
 
     const defaultPrompt = hasVideos ? 'olha esse vídeo' : (hasImages ? 'olha essa imagem' : 'olha isso');
-    const fullPromptText = `${temporalContext}\n${sessionBlock}${episodicBlock}${urlBlock}${ragContext}${contextText}${repliedBlock}${realJinchiNotice}${thinkingInstruction}${mediaInstruction}\n\nMensagem/Situação atual para responder:\n"${userPrompt || defaultPrompt}"`;
+    const fullPromptText = `${temporalContext}\n${sessionBlock}${episodicBlock}${memberDossierBlock}${urlBlock}${ragContext}${antiRepetitionBlock}${contextText}${repliedBlock}${realJinchiNotice}${thinkingInstruction}${mediaInstruction}\n\nMensagem/Situação atual para responder:\n"${userPrompt || defaultPrompt}"`;
 
     // Monta o payload multimodal se houver imagens ou vídeos
     const contentsPayload = [];
@@ -156,12 +181,16 @@ export async function generatePersonaResponse(
     }
     contentsPayload.push(fullPromptText);
 
+    const temperature = Math.max(1.0, config.gemini.temperature || 1.15);
+
     const response = await ai.models.generateContent({
       model: config.gemini.model,
       contents: contentsPayload,
       config: {
         systemInstruction,
-        temperature: config.gemini.temperature,
+        temperature,
+        topP: 0.95,
+        topK: 40,
         maxOutputTokens: config.gemini.maxTokens
       }
     });
@@ -173,10 +202,6 @@ export async function generatePersonaResponse(
     }
 
     // Pós-processamento de altíssima fidelidade:
-    // 1. Remove eventuais blocos de pensamento <thought>...</thought> ou [pensamento]
-    // 2. Remove aspas externas e prefixos
-    // 3. Garante minúsculas 100% como o Jinchi real
-    // 4. Formata interrogações com espaço antes (" ?")
     let cleaned = text
       .replace(/<thought>[\s\S]*?<\/thought>/gi, '')
       .replace(/\[pensamento\][\s\S]*?\[\/pensamento\]/gi, '')
@@ -186,7 +211,12 @@ export async function generatePersonaResponse(
       .replace(/\s*\?/g, ' ?')
       .trim();
 
-    return cleaned || getRandomFallback();
+    const finalResponse = cleaned || getRandomFallback();
+
+    // Registra no buffer anti-repetição
+    recordBotResponse(finalResponse);
+
+    return finalResponse;
   } catch (error) {
     console.error('[AI Service Error]:', error.message || error);
     return getRandomFallback();
