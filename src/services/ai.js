@@ -146,10 +146,10 @@ ${recentBotResponses.slice(0, 5).map(r => `• "${r}"`).join('\n')}
 
     // 11. Instrução de Reflexão e Raciocínio Silencioso (Chain-of-Thought)
     const thinkingInstruction = `
-[PROCESSO DE RACIOCÍNIO INTERNO ANTES DE FALAR]:
-1. Identifique o tema central, a zoeira ou o tom do que foi dito ou mostrado no vídeo/foto.
-2. Acesse suas memórias históricas, o dossiê do interlocutor ou a memória de sessão caso o assunto tenha relação.
-3. Formule uma resposta espontânea, variada e autêntica em minúsculas, evitando repetir o que você disse há pouco.
+[PROCESSO DE RACIOCÍNIO]:
+1. Identifique o tom do que foi dito ou mostrado no vídeo/foto.
+2. Formule uma resposta espontânea, autêntica e curta em minúsculas (1 única linha curta, estilo relaxado de Discord).
+3. NUNCA mande parágrafos longos, listas ou várias mensagens. Seja breve e despretensioso.
 4. Envie APENAS a fala final do Jinchi.
 `.trim();
 
@@ -159,9 +159,9 @@ ${recentBotResponses.slice(0, 5).map(r => `• "${r}"`).join('\n')}
 
     let mediaInstruction = '';
     if (hasVideos) {
-      mediaInstruction = '\n[REGRA DE VÍDEO/CLIPE RECEBIDO]: O usuário enviou um VÍDEO/CLIPE no chat. Você assistiu ao vídeo (áudio e imagens em movimento). NUNCA descreva o vídeo ("no vídeo vemos...", "o vídeo mostra..."). APENAS REAJA de forma direta, visceral e descontraída (rindo do fail, elogiando a jogada, comentando o meme ou zoando a bizarrice no seu estilo seco de sofá).';
+      mediaInstruction = '\n[REGRA DE VÍDEO/CLIPE RECEBIDO]: O usuário enviou um VÍDEO no chat. NUNCA descreva o vídeo. APENAS REAJA em 1 linha de forma direta e descontraída (rindo do fail, elogiando a jogada, comentando o meme ou zoando no seu estilo de sofá).';
     } else if (hasImages) {
-      mediaInstruction = '\n[REGRA DE IMAGEM/FOTO RECEBIDA]: O usuário enviou uma foto/imagem no chat. NUNCA descreva ou narre a foto ("tem um homem...", "na imagem vejo..."). APENAS REAJA de forma direta, visceral e zoeira (elogiando, rindo, zoando, criticando ou comentando no seu estilo seco de sofá).';
+      mediaInstruction = '\n[REGRA DE IMAGEM/FOTO RECEBIDA]: O usuário enviou uma foto no chat. NUNCA descreva a foto. APENAS REAJA em 1 linha de forma direta (elogiando, rindo, zoando ou comentando no seu estilo de sofá).';
     }
 
     const defaultPrompt = hasVideos ? 'olha esse vídeo' : (hasImages ? 'olha essa imagem' : 'olha isso');
@@ -181,7 +181,7 @@ ${recentBotResponses.slice(0, 5).map(r => `• "${r}"`).join('\n')}
     }
     contentsPayload.push(fullPromptText);
 
-    const temperature = Math.max(1.0, config.gemini.temperature || 1.15);
+    const temperature = typeof config.gemini.temperature === 'number' ? config.gemini.temperature : 0.80;
 
     const response = await ai.models.generateContent({
       model: config.gemini.model,
@@ -189,7 +189,7 @@ ${recentBotResponses.slice(0, 5).map(r => `• "${r}"`).join('\n')}
       config: {
         systemInstruction,
         temperature,
-        topP: 0.95,
+        topP: 0.90,
         topK: 40,
         maxOutputTokens: config.gemini.maxTokens
       }
@@ -210,6 +210,12 @@ ${recentBotResponses.slice(0, 5).map(r => `• "${r}"`).join('\n')}
       .toLowerCase()
       .replace(/\s*\?/g, ' ?')
       .trim();
+
+    // Limita a no máximo 2 linhas caso a IA tenha gerado mais
+    const lines = cleaned.split('\n').filter(l => l.trim().length > 0);
+    if (lines.length > 2) {
+      cleaned = lines.slice(0, 2).join('\n');
+    }
 
     const finalResponse = cleaned || getRandomFallback();
 
