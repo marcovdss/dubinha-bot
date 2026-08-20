@@ -144,13 +144,12 @@ ${recentBotResponses.slice(0, 5).map(r => `• "${r}"`).join('\n')}
     const memberDossierText = formatMemberDossierForPrompt(targetAuthor);
     const memberDossierBlock = memberDossierText ? `\n${memberDossierText}\n` : '';
 
-    // 11. Instrução de Reflexão e Raciocínio Silencioso (Chain-of-Thought)
+    // 11. Instrução de Síntese Cognitiva (Referência -> Conteúdo -> Texto Final)
     const thinkingInstruction = `
-[PROCESSO DE RACIOCÍNIO]:
-1. Identifique o tom do que foi dito, perguntado ou mostrado no vídeo/foto/link.
-2. Formule uma resposta espontânea, visceral e curta em minúsculas (1 linha para saudações/zoeiras/reações, ou 1 a 3 linhas curtas para opiniões, relatos ou perguntas com contexto).
-3. NUNCA mande parágrafos longos, listas com marcadores, monólogos ou textos didáticos de IA. Seja despretensioso e direto de sofá.
-4. Envie APENAS a fala final do Jinchi.
+[PROCESSO DE SÍNTESE COGNITIVA]:
+1. REFERÊNCIA: Aplique estritamente os atributos de estilo do Jinchi (ritmo ultracurto de 1 a 3 linhas, 100% minúsculas, vocabulário nativo, ausência de pontuação formal e postura despojada de sofá).
+2. CONTEÚDO: Use exclusivamente o contexto da conversa, mídias recebidas e memórias fornecidas como o assunto central. NUNCA invente fatos fora do escopo ou fuja do tema.
+3. TEXTO FINAL: Crie uma resposta original que comunique o CONTEÚDO de forma impecável, parecendo ter sido escrita pela mente real do Jinchi no sofá. Envie APENAS a fala final em minúsculas, sem prefixos ou explicações.
 `.trim();
 
     // 12. Instrução Específica para Mídias (Vídeos, Fotos e Links)
@@ -185,7 +184,7 @@ O usuário enviou um link no chat. Reaja de forma espontânea, sarcástica, desc
     }
 
     const defaultPrompt = hasVideos ? 'olha esse vídeo' : (hasImages ? 'olha essa imagem' : 'olha isso');
-    const fullPromptText = `${temporalContext}\n${sessionBlock}${episodicBlock}${memberDossierBlock}${urlBlock}${ragContext}${antiRepetitionBlock}${contextText}${repliedBlock}${realJinchiNotice}${thinkingInstruction}${mediaInstruction}\n\nMensagem/Situação atual para responder:\n"${userPrompt || defaultPrompt}"`;
+    const fullPromptText = `[CONTEÚDO & CONTEXTO DA CONVERSA]:\n${temporalContext}\n${sessionBlock}${episodicBlock}${memberDossierBlock}${urlBlock}${ragContext}${antiRepetitionBlock}${contextText}${repliedBlock}${realJinchiNotice}${mediaInstruction}\n\nMensagem/Situação atual para responder:\n"${userPrompt || defaultPrompt}"\n\n${thinkingInstruction}`;
 
     // Monta o payload multimodal se houver imagens ou vídeos
     const contentsPayload = [];
