@@ -5,7 +5,7 @@ import { sendChunkedReply } from '../utils/messageSender.js';
 import { recordLiveMessage } from '../services/learning.js';
 import { trackMemberActivity, getAllActiveSessionSummaries } from '../services/sessionMemory.js';
 import { inspectLiveFact } from '../services/episodicMemory.js';
-import { extractUrlContext } from '../utils/urlHelper.js';
+import { extractUrlContext, extractMediaUrlsFromText, isMediaUrl } from '../utils/urlHelper.js';
 import { enqueueCognitiveInspection, reinforceSuccessfulDialogue } from '../services/cognitiveLearning.js';
 
 export const name = Events.MessageCreate;
@@ -72,12 +72,11 @@ export async function execute(message) {
   const aliasRegex = /\b(dubinha[s]?|duba[s]?|dubin[s]?|dub[aã]o|dube[s]?|dubis|jinchi[s]?|jinch[eoa]?|jinchin[s]?|jinch[aã]o|jinsh[io]|ginchi)\b/i;
   const isNameMentioned = aliasRegex.test(contentLower);
 
-  // 4. Detecção de Mídias (Imagens e Vídeos anexados ou links)
+  // 4. Detecção Abrangente de Mídias (Imagens e Vídeos anexados ou links sociais/vídeos)
   const hasAttachmentImage = message.attachments.some(att => att.contentType?.startsWith('image/') || /\.(jpg|jpeg|png|webp|gif)$/i.test(att.name));
   const hasAttachmentVideo = message.attachments.some(att => att.contentType?.startsWith('video/') || /\.(mp4|webm|mov|mkv)$/i.test(att.name));
-  const hasUrlImage = /(https?:\/\/[^\s]+?\.(?:png|jpg|jpeg|webp|gif))/i.test(message.cleanContent);
-  const hasUrlVideo = /(https?:\/\/[^\s]+?\.(?:mp4|webm|mov))/i.test(message.cleanContent);
-  const hasMedia = hasAttachmentImage || hasAttachmentVideo || hasUrlImage || hasUrlVideo;
+  const hasUrlMedia = isMediaUrl(message.cleanContent);
+  const hasMedia = hasAttachmentImage || hasAttachmentVideo || hasUrlMedia;
 
   // 5. Verifica se está no canal alvo (ou em qualquer canal se targetChannelId não estiver configurado)
   const isInTargetChannel = !targetChannelId || channelId === targetChannelId;
@@ -94,7 +93,7 @@ export async function execute(message) {
     // Menção com @ ou Reply sempre responde sem cooldown
     shouldReply = true;
   } else if (hasMedia && isInTargetChannel) {
-    // 🎬 Detecção de Foto/Vídeo: 85% de chance de assistir e reagir com cooldown curto de 4s
+    // 🎬 Detecção de Foto/Vídeo/Link de Mídia: 85% de chance de assistir e reagir com cooldown curto de 4s
     if (timeSinceLastReply > 4000) {
       shouldReply = Math.random() < 0.85;
     }
@@ -160,7 +159,7 @@ export async function execute(message) {
       } catch {}
     }
 
-    // 3. Extrai contexto de Links / URLs (se houver)
+    // 3. Extrai contexto rico de Links / URLs (se houver)
     const urlContext = await extractUrlContext(message.cleanContent);
 
     // 4. Memória de Sessão de curto prazo dos membros hoje
@@ -171,10 +170,10 @@ export async function execute(message) {
       .replace(new RegExp(`@${message.client.user.username}`, 'gi'), '')
       .trim();
 
-    // 6. Extrai imagens e vídeos anexados na mensagem ou links diretos para IA Multimodal
+    // 6. Extrai imagens e vídeos anexados na mensagem ou links diretos/sociais para IA Multimodal
     const mediaBuffers = [];
 
-    // Anexos do Discord (Imagens e Vídeos)
+    // 6.1 Anexos do Discord (Imagens e Vídeos)
     if (message.attachments.size > 0) {
       for (const [, att] of message.attachments) {
         const isImage = att.contentType?.startsWith('image/') || /\.(jpg|jpeg|png|webp|gif)$/i.test(att.name);
@@ -193,39 +192,48 @@ export async function execute(message) {
                   mimeType,
                   isVideo
                 });
-                console.log(`🎬 [Visão Multimodal - ${isVideo ? 'Vídeo' : 'Foto'}] Baixado de @${authorName} (${(arrayBuffer.byteLength / 1024 / 1024).toFixed(2)} MB)`);
+                console.log(`🎬 [Visão Multimodal - Anexo ${isVideo ? 'Vídeo' : 'Foto'}] Baixado de @${authorName} (${(arrayBuffer.byteLength / 1024 / 1024).toFixed(2)} MB)`);
               }
             }
           } catch (mediaErr) {
-            console.warn(`[Visão Multimodal] Erro ao baixar ${isVideo ? 'vídeo' : 'imagem'}:`, mediaErr.message);
+            console.warn(`[Visão Multimodal] Erro ao baixar anexo ${isVideo ? 'vídeo' : 'imagem'}:`, mediaErr.message);
           }
         }
       }
     }
 
-    // Links diretos de imagens ou vídeos no texto
-    if (mediaBuffers.length === 0 && (hasUrlImage || hasUrlVideo)) {
-      const match = message.cleanContent.match(/(https?:\/\/[^\s]+?\.(?:png|jpg|jpeg|webp|gif|mp4|webm|mov))/i);
-      if (match && match[1]) {
-        const url = match[1];
-        const isVideo = /\.(mp4|webm|mov)$/i.test(url);
-        try {
-          const res = await fetch(url, { signal: AbortSignal.timeout(10000) });
-          if (res.ok) {
-            const arrayBuffer = await res.arrayBuffer();
-            if (arrayBuffer.byteLength <= 25 * 1024 * 1024) {
-              const mimeType = res.headers.get('content-type') || (isVideo ? 'video/mp4' : 'image/jpeg');
-              mediaBuffers.push({
-                data: Buffer.from(arrayBuffer).toString('base64'),
-                mimeType,
-                isVideo
-              });
-              console.log(`🎬 [Visão Multimodal - ${isVideo ? 'Vídeo URL' : 'Foto URL'}] Baixado de @${authorName} (${(arrayBuffer.byteLength / 1024 / 1024).toFixed(2)} MB)`);
+    // 6.2 Links diretos de imagens, vídeos ou links sociais com mídias extraíveis
+    if (mediaBuffers.length === 0 && hasUrlMedia) {
+      try {
+        const extractedMediaUrls = await extractMediaUrlsFromText(message.cleanContent);
+        for (const item of extractedMediaUrls.slice(0, 2)) {
+          try {
+            const timeoutMs = item.isVideo ? 12000 : 6000;
+            const res = await fetch(item.url, {
+              headers: {
+                'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36'
+              },
+              signal: AbortSignal.timeout(timeoutMs)
+            });
+
+            if (res.ok) {
+              const arrayBuffer = await res.arrayBuffer();
+              if (arrayBuffer.byteLength <= 25 * 1024 * 1024) {
+                const mimeType = res.headers.get('content-type') || item.mimeType || (item.isVideo ? 'video/mp4' : 'image/jpeg');
+                mediaBuffers.push({
+                  data: Buffer.from(arrayBuffer).toString('base64'),
+                  mimeType,
+                  isVideo: item.isVideo
+                });
+                console.log(`🎬 [Visão Multimodal - URL ${item.isVideo ? 'Vídeo' : 'Foto'}] Baixado de @${authorName} (${(arrayBuffer.byteLength / 1024 / 1024).toFixed(2)} MB)`);
+              }
             }
+          } catch (itemErr) {
+            console.warn(`[Visão Multimodal] Erro ao baixar URL de mídia:`, itemErr.message);
           }
-        } catch (urlErr) {
-          console.warn('[Visão Multimodal] Erro ao baixar URL:', urlErr.message);
         }
+      } catch (urlExtractErr) {
+        console.warn(`[Visão Multimodal] Erro ao extrair URLs de mídia:`, urlExtractErr.message);
       }
     }
 
@@ -249,12 +257,22 @@ export async function execute(message) {
       return;
     }
 
-    // 7. Gera a resposta na persona com contexto multicamadas expandido e visão multimodal (fotos + vídeos)
+    // 7. Determina o prompt efetivo contextual
     const hasAnyVideo = mediaBuffers.some(m => m.isVideo);
-    const defaultPrompt = hasAnyVideo ? 'olha esse vídeo' : (mediaBuffers.length > 0 ? 'olha essa imagem' : message.cleanContent);
+    const hasAnyImage = mediaBuffers.length > 0 && !hasAnyVideo;
+    
+    // Se o usuário só enviou o link/mídia sem texto adicional, define um prompt natural de gatilho
+    let effectivePrompt = cleanUserPrompt;
+    if (!effectivePrompt || isMediaUrl(effectivePrompt)) {
+      if (hasAnyVideo) effectivePrompt = 'olha esse vídeo';
+      else if (hasAnyImage) effectivePrompt = 'olha essa imagem';
+      else if (urlContext) effectivePrompt = 'olha esse link';
+      else effectivePrompt = 'olha isso';
+    }
 
+    // 8. Gera a resposta na persona com contexto multicamadas expandido e visão multimodal (fotos + vídeos)
     const response = await generatePersonaResponse(
-      cleanUserPrompt || defaultPrompt,
+      effectivePrompt,
       recentHistory,
       authorName,
       mediaBuffers,
