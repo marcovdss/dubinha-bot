@@ -220,15 +220,7 @@ O usuário enviou um link no chat. Reaja de forma espontânea, sarcástica, desc
       return getRandomFallback();
     }
 
-    // Pós-processamento de altíssima fidelidade:
-    let cleaned = text
-      .replace(/<thought>[\s\S]*?<\/thought>/gi, '')
-      .replace(/\[pensamento\][\s\S]*?\[\/pensamento\]/gi, '')
-      .replace(/^["']|["']$/g, '')
-      .replace(/^(?:jinchi|dubinha|duba|bot):\s*/i, '')
-      .toLowerCase()
-      .replace(/\s*\?/g, ' ?')
-      .trim();
+    let cleaned = cleanAiResponse(text);
 
     // Limita a no máximo 3 linhas curtas caso a IA tenha gerado excesso
     const lines = cleaned.split('\n').map(l => l.trim()).filter(l => l.length > 0);
@@ -246,4 +238,29 @@ O usuário enviou um link no chat. Reaja de forma espontânea, sarcástica, desc
     console.error('[AI Service Error]:', error.message || error);
     return getRandomFallback();
   }
+}
+
+/**
+ * Limpa e sanitiza a resposta gerada pela IA, eliminando pensamentos, blocos de código e tags HTML/XML residuais
+ * @param {string} text
+ * @returns {string}
+ */
+export function cleanAiResponse(text) {
+  if (!text) return '';
+  return text
+    // 1. Remove blocos de raciocínio/pensamento e markdown fences
+    .replace(/<thought>[\s\S]*?<\/thought>/gi, '')
+    .replace(/\[pensamento\][\s\S]*?\[\/pensamento\]/gi, '')
+    .replace(/<thinking>[\s\S]*?<\/thinking>/gi, '')
+    .replace(/```(?:html|json|markdown|txt)?[\s\S]*?```/gi, '')
+    // 2. Remove tags HTML/XML comuns (div, p, span, br, etc.)
+    .replace(/<\/?(?:div|p|span|b|i|u|a|br|hr|h[1-6]|pre|code|table|tr|td|th|ul|ol|li|strong|em|img|blockquote|section|article|header|footer|nav|aside|main|figure|figcaption|video|audio|source|iframe|embed|object|param|canvas|svg|math|form|input|button|select|option|textarea|label|fieldset|legend|details|summary|dialog|script|style|meta|link|head|body|html|thought|thinking|output|response|answer)[^>]*>/gi, '')
+    // 3. Remove qualquer outra tag XML/HTML que não seja menção ou emoji nativo do Discord (<@...>, <#...>, <:emoji:...>)
+    .replace(/<(?!\/?(?:@[!&]?\d+|#\d+|a?:[a-zA-Z0-9_~]+:\d+|t:\d+(?::[a-zA-Z])?))[^>]+>/g, '')
+    // 4. Remove aspas externas e prefixos
+    .replace(/^["']|["']$/g, '')
+    .replace(/^(?:jinchi|dubinha|duba|bot):\s*/i, '')
+    .toLowerCase()
+    .replace(/\s*\?/g, ' ?')
+    .trim();
 }

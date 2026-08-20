@@ -11,20 +11,35 @@ const COMMON_HEADERS = {
 };
 
 /**
- * Limpa entidades HTML comuns de títulos e textos
+ * Remove qualquer tag HTML/XML de uma string
  * @param {string} str
  * @returns {string}
  */
-function cleanHtmlEntities(str) {
+export function stripHtmlTags(str) {
   if (!str) return '';
   return str
+    .replace(/<[^>]*>/g, ' ')
+    .replace(/\s+/g, ' ')
+    .trim();
+}
+
+/**
+ * Limpa entidades e tags HTML de títulos, tweets e textos
+ * @param {string} str
+ * @returns {string}
+ */
+export function cleanHtmlEntities(str) {
+  if (!str) return '';
+  const decoded = str
     .replace(/&amp;/g, '&')
     .replace(/&quot;/g, '"')
     .replace(/&#39;/g, "'")
     .replace(/&lt;/g, '<')
     .replace(/&gt;/g, '>')
     .replace(/&nbsp;/g, ' ')
+    .replace(/&#(\d+);/g, (_, code) => String.fromCharCode(Number(code)))
     .trim();
+  return stripHtmlTags(decoded);
 }
 
 /**

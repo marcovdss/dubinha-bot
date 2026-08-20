@@ -31,6 +31,19 @@ export function resolveGuildMentions(text, guild) {
 }
 
 /**
+ * Sanitiza a mensagem removendo tags HTML/XML residuais antes do envio ao Discord, preservando menções válidas
+ * @param {string} text
+ * @returns {string}
+ */
+export function sanitizeDiscordMessage(text) {
+  if (!text) return '';
+  return text
+    .replace(/<\/?(?:div|p|span|b|i|u|a|br|hr|h[1-6]|pre|code|table|tr|td|th|ul|ol|li|strong|em|img|blockquote|section|article|header|footer|nav|aside|main|figure|figcaption|video|audio|source|iframe|embed|object|param|canvas|svg|math|form|input|button|select|option|textarea|label|fieldset|legend|details|summary|dialog|script|style|meta|link|head|body|html|thought|thinking|output|response|answer)[^>]*>/gi, '')
+    .replace(/<(?!\/?(?:@[!&]?\d+|#\d+|a?:[a-zA-Z0-9_~]+:\d+|t:\d+(?::[a-zA-Z])?))[^>]+>/g, '')
+    .trim();
+}
+
+/**
  * Divide o texto em linhas individuais para envio sequencial (uma mensagem por linha)
  * @param {string} text
  * @returns {string[]}
@@ -38,9 +51,12 @@ export function resolveGuildMentions(text, guild) {
 export function splitMessageIntoChunks(text) {
   if (!text) return [];
 
-  const rawLines = text
+  const sanitized = sanitizeDiscordMessage(text);
+  if (!sanitized) return [];
+
+  const rawLines = sanitized
     .split(/\n+/)
-    .map(line => line.trim())
+    .map(line => sanitizeDiscordMessage(line))
     .filter(line => line.length > 0);
 
   if (rawLines.length === 0) return [];
@@ -64,7 +80,7 @@ export function splitMessageIntoChunks(text) {
     }
   }
 
-  return finalChunks.length > 0 ? finalChunks : [text.trim()];
+  return finalChunks.length > 0 ? finalChunks : [sanitized];
 }
 
 /**
