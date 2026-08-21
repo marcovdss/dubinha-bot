@@ -8,6 +8,7 @@
     "start": "node src/index.js",
     "dev": "node --watch src/index.js",
     "deploy": "node src/deploy-commands.js",
+    "deploy:clean": "node src/deploy-commands.js --clean",
     "crawl": "node src/scripts/crawl-persona.js"
   },
   "keywords": [
