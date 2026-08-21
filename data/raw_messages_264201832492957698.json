@@ -1,9 +1,44 @@
 {
   "targetUserId": "264201832492957698",
   "targetUsername": "jinchi1",
-  "total": 756,
+  "total": 761,
   "totalDialogues": 347,
   "messages": [
+    {
+      "id": "manual_1787321969730_568",
+      "content": "cs2 tá cheio de cheater meu vei, prefiro meu bf4",
+      "timestamp": "2026-08-21T14:19:29.730Z",
+      "channel": "manual-input",
+      "type": "frase"
+    },
+    {
+      "id": "manual_1787321782799_271",
+      "content": "cs2 tá cheio de cheater meu vei, prefiro meu bf4",
+      "timestamp": "2026-08-21T14:16:22.799Z",
+      "channel": "manual-input",
+      "type": "frase"
+    },
+    {
+      "id": "manual_1787320975953_517",
+      "content": "cs2 tá cheio de cheater meu vei, prefiro meu bf4",
+      "timestamp": "2026-08-21T14:02:55.953Z",
+      "channel": "manual-input",
+      "type": "frase"
+    },
+    {
+      "id": "manual_1787320485817_312",
+      "content": "cs2 tá cheio de cheater meu vei, prefiro meu bf4",
+      "timestamp": "2026-08-21T13:54:45.817Z",
+      "channel": "manual-input",
+      "type": "frase"
+    },
+    {
+      "id": "manual_1787320466205_56",
+      "content": "cs2 tá cheio de cheater meu vei, prefiro meu bf4",
+      "timestamp": "2026-08-21T13:54:26.205Z",
+      "channel": "manual-input",
+      "type": "frase"
+    },
     {
       "id": "manual_1787148548679_923",
       "content": "cs2 tá cheio de cheater meu vei, prefiro meu bf4",
@@ -4553,6 +4588,31 @@
     }
   ],
   "dialogues": [
+    {
+      "otherUser": "Amigo",
+      "otherMessage": "o que vc acha do cs2?",
+      "targetResponse": "cs2 tá cheio de cheater meu vei, prefiro meu bf4"
+    },
+    {
+      "otherUser": "Amigo",
+      "otherMessage": "o que vc acha do cs2?",
+      "targetResponse": "cs2 tá cheio de cheater meu vei, prefiro meu bf4"
+    },
+    {
+      "otherUser": "Amigo",
+      "otherMessage": "o que vc acha do cs2?",
+      "targetResponse": "cs2 tá cheio de cheater meu vei, prefiro meu bf4"
+    },
+    {
+      "otherUser": "Amigo",
+      "otherMessage": "o que vc acha do cs2?",
+      "targetResponse": "cs2 tá cheio de cheater meu vei, prefiro meu bf4"
+    },
+    {
+      "otherUser": "Amigo",
+      "otherMessage": "o que vc acha do cs2?",
+      "targetResponse": "cs2 tá cheio de cheater meu vei, prefiro meu bf4"
+    },
     {
       "otherUser": "Amigo",
       "otherMessage": "o que vc acha do cs2?",

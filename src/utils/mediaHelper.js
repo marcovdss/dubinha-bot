@@ -1,4 +1,5 @@
 import { AttachmentBuilder } from 'discord.js';
+import { isSafeUrl } from './imageOptimizer.js';
 
 /**
  * Mapeamento contextual de imagens de alta qualidade por tema para fallback garantido
@@ -35,6 +36,7 @@ function getRandomUserAgent() {
  */
 async function downloadImageAttachment(rawUrl) {
   if (!rawUrl || !rawUrl.startsWith('http')) return null;
+  if (!(await isSafeUrl(rawUrl))) return null;
 
   try {
     const res = await fetch(rawUrl, {

@@ -25,6 +25,6 @@ COPY . .
 # Garante existência do diretório de dados para persistência
 RUN mkdir -p data
 
-# Inicializa o bot
-CMD ["npm", "start"]
+# Inicializa o bot diretamente como PID 1 para repasse de sinais POSIX (SIGTERM/SIGINT)
+CMD ["node", "src/index.js"]
 

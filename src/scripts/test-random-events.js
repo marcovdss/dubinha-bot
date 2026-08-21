@@ -1,3 +1,4 @@
+import 'dotenv/config';
 import { generatePersonaResponse } from '../services/ai.js';
 import { fetchImageAttachment } from '../utils/mediaHelper.js';
 import { getCurrentGame } from '../services/presenceManager.js';

@@ -13,14 +13,15 @@ dotenv.config();
  */
 export function normalizeProbability(val, defaultVal = 0.25) {
   if (val === undefined || val === null || val === '') return defaultVal;
+  const isPercentageString = typeof val === 'string' && val.includes('%');
   if (typeof val === 'string') {
     val = val.replace('%', '').trim();
   }
   const parsed = parseFloat(val);
   if (isNaN(parsed)) return defaultVal;
   if (parsed < 0) return 0;
-  if (parsed > 1) {
-    // Ex: Se o usuário passou 5, 25, 50 -> converte de porcentagem para decimal (0.05, 0.25, 0.50)
+  if (isPercentageString || parsed > 1) {
+    // Ex: Se o usuário passou 1%, 5, 25, 50 -> converte de porcentagem para decimal (0.01, 0.05, 0.25, 0.50)
     return Math.min(parsed / 100, 1);
   }
   return parsed;
@@ -38,8 +39,9 @@ export const config = {
   },
   gemini: {
     apiKey: process.env.GEMINI_API_KEY?.trim() || '',
-    model: process.env.GEMINI_MODEL?.trim() || 'gemini-3.5-flash-lite',
-    temperature: parseFloat(process.env.GEMINI_TEMPERATURE || '0.80'),
+    model: process.env.GEMINI_MODEL?.trim() || 'gemini-3.5-flash',
+    fallbackModel: process.env.GEMINI_FALLBACK_MODEL?.trim() || 'gemini-3.6-flash',
+    temperature: parseFloat(process.env.GEMINI_TEMPERATURE || '1.0'),
     maxTokens: parseInt(process.env.GEMINI_MAX_TOKENS || '300', 10)
   },
   behavior: {

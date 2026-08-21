@@ -1,6 +1,12 @@
 import fs from 'node:fs';
+import path from 'node:path';
+import { fileURLToPath } from 'node:url';
 
-const data = JSON.parse(fs.readFileSync('data/raw_messages_264201832492957698.json', 'utf8'));
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = path.dirname(__filename);
+const dataPath = path.join(__dirname, '../../data/raw_messages_264201832492957698.json');
+
+const data = JSON.parse(fs.readFileSync(dataPath, 'utf8'));
 
 console.log('--- ESTATÍSTICAS DO DATASET EXPANDIDO ---');
 console.log('Total Mensagens:', data.messages.length);

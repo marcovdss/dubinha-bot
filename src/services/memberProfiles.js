@@ -41,7 +41,7 @@ export function getMemberProfile(nameOrAlias) {
   const data = cachedProfiles || loadProfiles();
   const clean = nameOrAlias.toLowerCase().trim();
 
-  // Match por chave exata
+  // 1. Match por chave ou alias exato
   for (const [key, profile] of Object.entries(data.members)) {
     if (key.toLowerCase() === clean) return profile;
     if (profile.aliases && profile.aliases.some(a => a.toLowerCase() === clean)) {
@@ -49,10 +49,16 @@ export function getMemberProfile(nameOrAlias) {
     }
   }
 
-  // Match parcial
-  for (const [key, profile] of Object.entries(data.members)) {
-    if (key.toLowerCase().includes(clean) || clean.includes(key.toLowerCase())) {
-      return profile;
+  // 2. Match parcial seguro (apenas para termos com mais de 2 caracteres para evitar colisões com letras únicas)
+  if (clean.length > 2) {
+    for (const [key, profile] of Object.entries(data.members)) {
+      const keyLower = key.toLowerCase();
+      if (keyLower.length > 2 && (keyLower.includes(clean) || clean.includes(keyLower))) {
+        return profile;
+      }
+      if (profile.aliases && profile.aliases.some(a => a.length > 2 && (a.toLowerCase().includes(clean) || clean.includes(a.toLowerCase())))) {
+        return profile;
+      }
     }
   }
 

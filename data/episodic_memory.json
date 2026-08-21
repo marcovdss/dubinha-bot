@@ -2,7 +2,13 @@
   "episodic_events": [
     {
       "user": "Zanin",
-      "fact": "comprou um monte de jogos na promoção da Steam e deixou quase todos mofando na biblioteca sem jogar",
+      "fact": "é completamente viciado em RuneScape (OSRS) e passa o dia todo jogando e grindando isso",
+      "date": "2026-08-21",
+      "topic": "games"
+    },
+    {
+      "user": "Zanin",
+      "fact": "comprou um monte de jogos na promoção da Steam mas deixa quase todos mofando na biblioteca porque só quer saber de jogar RuneScape",
       "date": "2026-07-28",
       "topic": "games"
     },

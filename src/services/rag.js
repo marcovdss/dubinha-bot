@@ -84,15 +84,30 @@ export function loadDatasets() {
     const allMsgs = [];
     const allDialogues = [];
 
-    // 1. Mensagens reais do histórico escaneado
+    // 1. Mensagens reais do histórico escaneado com deduplicação
+    const seenMsgContent = new Set();
+    const seenDialogueKey = new Set();
+
     for (const file of files) {
       const filePath = path.join(dataDir, file);
       const data = readJsonSafe(filePath, { messages: [], dialogues: [] });
       if (Array.isArray(data.messages)) {
-        allMsgs.push(...data.messages);
+        for (const m of data.messages) {
+          const clean = (m.content || '').trim().toLowerCase();
+          if (clean && !seenMsgContent.has(clean)) {
+            seenMsgContent.add(clean);
+            allMsgs.push(m);
+          }
+        }
       }
       if (Array.isArray(data.dialogues)) {
-        allDialogues.push(...data.dialogues);
+        for (const d of data.dialogues) {
+          const key = `${(d.otherUser || '').toLowerCase()}_${(d.otherMessage || '').toLowerCase()}_${(d.targetResponse || '').toLowerCase()}`;
+          if (!seenDialogueKey.has(key)) {
+            seenDialogueKey.add(key);
+            allDialogues.push(d);
+          }
+        }
       }
     }
 
@@ -101,13 +116,21 @@ export function loadDatasets() {
     if (Array.isArray(customData.phrases_and_dialogues)) {
       for (const item of customData.phrases_and_dialogues) {
         if (item.frase) {
-          allMsgs.unshift({ id: `custom_${item.frase}`, content: item.frase, channel: 'custom' });
+          const clean = item.frase.trim().toLowerCase();
+          if (!seenMsgContent.has(clean)) {
+            seenMsgContent.add(clean);
+            allMsgs.unshift({ id: `custom_${item.frase}`, content: item.frase, channel: 'custom' });
+          }
           if (item.contexto) {
-            allDialogues.unshift({
-              otherUser: 'Amigo',
-              otherMessage: item.contexto,
-              targetResponse: item.frase
-            });
+            const key = `amigo_${item.contexto.toLowerCase()}_${clean}`;
+            if (!seenDialogueKey.has(key)) {
+              seenDialogueKey.add(key);
+              allDialogues.unshift({
+                otherUser: 'Amigo',
+                otherMessage: item.contexto,
+                targetResponse: item.frase
+              });
+            }
           }
         }
       }
@@ -199,14 +222,15 @@ function getDiverseFallbackSample(limit = 6) {
 }
 
 /**
- * Busca memórias e diálogos contextualmente relevantes usando pontuação flexível
- * e garantia de fallback variado se não houver match direto.
+ * Busca memórias e diálogos contextualmente relevantes usando pontuação flexível,
+ * bonificação de afinidade pelo interlocutor e garantia de fallback variado.
  * @param {string} query - Mensagem atual do usuário
  * @param {Array<{author: string, content: string}>} recentHistory - Contexto recente do canal
  * @param {number} limit - Quantidade máxima de exemplos
+ * @param {string} targetAuthor - Nome do usuário que enviou a mensagem
  * @returns {{ relevantMessages: string[], relevantDialogues: Array<{user: string, duba: string}> }}
  */
-export function searchKnowledgeBase(query, recentHistory = [], limit = 8) {
+export function searchKnowledgeBase(query, recentHistory = [], limit = 8, targetAuthor = '') {
   if (cachedMessages.length === 0 || Date.now() - lastLoadedTime > 300000) {
     loadDatasets();
   }
@@ -215,19 +239,28 @@ export function searchKnowledgeBase(query, recentHistory = [], limit = 8) {
     return { relevantMessages: [], relevantDialogues: [] };
   }
 
+  const cleanAuthor = (targetAuthor || '').toLowerCase().trim();
+
   // Combina query atual + últimas 6 mensagens do canal para contexto rico
   const historySnippet = recentHistory.slice(-6).map(h => h.content).join(' ');
   const fullSearchText = `${query} ${historySnippet}`;
   const queryTokens = extractKeywords(fullSearchText);
 
-  if (queryTokens.length === 0) {
+  if (queryTokens.length === 0 && !cleanAuthor) {
     // Se não há palavras-chave específicas (ex: "oi", "e aí", "kkk"), fornece repertório variado do Jinchi
     return getDiverseFallbackSample(limit);
   }
 
-  // 1. Pontuação de diálogos
+  // 1. Pontuação de diálogos com afinidade de interlocutor
   const scoredDialogues = cachedDialogues.map(d => {
     let score = 0;
+    const otherUserLower = (d.otherUser || '').toLowerCase().trim();
+
+    // Bônus de afinidade do interlocutor (+8 pontos se for diálogo com a mesma pessoa)
+    if (cleanAuthor && otherUserLower && (otherUserLower === cleanAuthor || cleanAuthor.includes(otherUserLower) || otherUserLower.includes(cleanAuthor))) {
+      score += 8;
+    }
+
     const otherTokens = extractKeywords(d.otherMessage || '');
     const targetTokens = extractKeywords(d.targetResponse || '');
 

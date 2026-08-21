@@ -1,9 +1,10 @@
-import { SlashCommandBuilder } from 'discord.js';
+import { SlashCommandBuilder, PermissionFlagsBits } from 'discord.js';
 import { addManualMemory } from '../../services/learning.js';
 
 export const data = new SlashCommandBuilder()
   .setName('aprender')
   .setDescription('Atualiza a memória, fatos ou regras de comportamento do Dubinha')
+  .setDefaultMemberPermissions(PermissionFlagsBits.ManageGuild)
   .addStringOption(option =>
     option
       .setName('instrucao')
@@ -30,6 +31,9 @@ export const data = new SlashCommandBuilder()
   );
 
 export async function execute(interaction) {
+  // Evita timeout do Discord em operações de disco
+  await interaction.deferReply({ ephemeral: true });
+
   const instrucao = interaction.options.getString('instrucao');
   const tipo = interaction.options.getString('tipo') || 'auto';
   const contexto = interaction.options.getString('contexto');
@@ -52,14 +56,12 @@ export async function execute(interaction) {
 
     reply += `\n💾 *Salvo permanentemente em \`data/custom_memory.json\` e ativo na persona do bot a partir de agora!*`;
 
-    await interaction.reply({
-      content: reply,
-      ephemeral: true
+    await interaction.editReply({
+      content: reply
     });
   } else {
-    await interaction.reply({
-      content: '❌ Ocorreu um erro ao salvar a atualização. Tente novamente!',
-      ephemeral: true
+    await interaction.editReply({
+      content: '❌ Ocorreu um erro ao salvar a atualização. Tente novamente!'
     });
   }
 }

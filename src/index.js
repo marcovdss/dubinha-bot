@@ -15,8 +15,27 @@ process.on('uncaughtException', (error) => {
   if (error.code === 'EPIPE' || error.code === 'ERR_STREAM_DESTROYED') {
     return; // Ignora EPIPE inofensivo de encerramento de pipe de áudio
   }
-  console.error('💥 [Uncaught Exception]:', error);
+  console.error('💥 [Uncaught Exception Fatal]:', error);
+  gracefulShutdown('uncaughtException');
 });
+
+// Encerramento Gracioso (Graceful Shutdown)
+async function gracefulShutdown(signal) {
+  console.log(`\n🛑 Recebido sinal de encerramento (${signal}). Fechando conexões com segurança...`);
+  try {
+    if (client.user) {
+      client.destroy();
+      console.log('🔌 Conexão com o Discord Gateway destruída.');
+    }
+  } catch (err) {
+    console.error('Erro ao destruir cliente do Discord:', err);
+  } finally {
+    process.exit(0);
+  }
+}
+
+process.on('SIGINT', () => gracefulShutdown('SIGINT'));
+process.on('SIGTERM', () => gracefulShutdown('SIGTERM'));
 
 // 3. Inicializa o cliente do Discord
 const client = new Client({

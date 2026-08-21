@@ -13,13 +13,20 @@ export function resolveGuildMentions(text, guild) {
     const cleanName = rawName.toLowerCase();
 
     // Busca o membro por displayName, username ou nickname
-    const foundMember = guild.members.cache.find(m => {
+    const foundMember = guild.members?.cache?.find(m => {
       const uName = m.user.username.toLowerCase();
       const dName = m.displayName.toLowerCase();
       const nName = (m.nickname || '').toLowerCase();
 
-      return uName === cleanName || dName === cleanName || nName === cleanName ||
-             dName.startsWith(cleanName) || uName.startsWith(cleanName);
+      if (uName === cleanName || dName === cleanName || nName === cleanName) {
+        return true;
+      }
+
+      if (cleanName.length > 2) {
+        return dName.startsWith(cleanName) || uName.startsWith(cleanName);
+      }
+
+      return false;
     });
 
     if (foundMember && !foundMember.user.bot) {
@@ -62,20 +69,27 @@ export function splitMessageIntoChunks(text) {
   if (rawLines.length === 0) return [];
 
   const finalChunks = [];
-  const seen = new Set();
 
   for (const line of rawLines) {
-    const norm = line.toLowerCase();
-    if (seen.has(norm)) continue;
-    seen.add(norm);
-
     if (line.length <= 1900) {
       finalChunks.push(line);
     } else {
       let remaining = line;
       while (remaining.length > 0) {
-        finalChunks.push(remaining.slice(0, 1900));
-        remaining = remaining.slice(1900);
+        if (remaining.length <= 1900) {
+          finalChunks.push(remaining);
+          break;
+        }
+        let splitIdx = remaining.lastIndexOf(' ', 1900);
+        if (splitIdx <= 0) {
+          splitIdx = 1900;
+          // Evita cortar surrogate pair no meio
+          if (/[\uD800-\uDBFF]/.test(remaining.charAt(splitIdx - 1))) {
+            splitIdx -= 1;
+          }
+        }
+        finalChunks.push(remaining.slice(0, splitIdx).trim());
+        remaining = remaining.slice(splitIdx).trim();
       }
     }
   }

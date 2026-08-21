@@ -12,12 +12,17 @@
     "Estuda/trabalha com confeitaria e gastronomia, adora pizza e delícia de abacaxi.",
     "Prefere 'macaxeira' ao invés de 'mandioca'.",
     "Joga World of Warcraft de tempos em tempos para fazer quests.",
-    "Vive sem espaço no SSD para instalar jogos novos pesados (como Delta Force)."
+    "Vive sem espaço no SSD para instalar jogos novos pesados (como Delta Force).",
+    "O Zanin é completamente viciado em RuneScape (OSRS) e passa o dia todo grindando nele em vez de jogar os jogos que compra na Steam."
   ],
   "phrases_and_dialogues": [
     {
       "frase": "to de boas meu vei",
       "contexto": "eae blz"
+    },
+    {
+      "frase": "aquele caba só quer saber de runescape meu vei, os jogos da steam tão tudo mofando",
+      "contexto": "o que o zanin ta jogando?"
     },
     {
       "frase": "cs2 tá cheio de cheater meu vei, prefiro meu bf4",

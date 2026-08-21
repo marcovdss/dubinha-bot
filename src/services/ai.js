@@ -83,7 +83,6 @@ export async function generatePersonaResponse(
 
   try {
     const targetAuthor = authorName || (recentHistory.length > 0 ? recentHistory[recentHistory.length - 1].author : '');
-    const systemInstruction = buildSystemPrompt(targetAuthor);
 
     // 1. Contexto Temporal em Tempo Real
     const temporalContext = getTemporalContext();
@@ -95,20 +94,16 @@ export async function generatePersonaResponse(
       episodicBlock = `\n[MEMÓRIAS HISTÓRICAS PERMANENTES DESTE SERVIDOR & DA SUA VIDA]:\n${episodicFacts.join('\n')}\n\n`;
     }
 
-    // 3. Busca semântica RAG rica no histórico real de mensagens do Jinchi
-    const { relevantMessages, relevantDialogues } = searchKnowledgeBase(userPrompt, recentHistory, 8);
+    // 3. Busca semântica RAG rica no histórico real com afinidade pelo interlocutor
+    const { relevantMessages, relevantDialogues } = searchKnowledgeBase(userPrompt, recentHistory, 8, targetAuthor);
+
+    // Constrói o System Prompt passando o interlocutor e os diálogos dinâmicos do RAG
+    const systemInstruction = buildSystemPrompt(targetAuthor, relevantDialogues.slice(0, 6));
 
     let ragContext = '';
-    if (relevantDialogues.length > 0 || relevantMessages.length > 0) {
-      ragContext = `\n[MEMÓRIAS, FATOS & HISTÓRICO DA SUA VIDA - USE EM 1ª PESSOA ("EU")]:\n`;
-      if (relevantDialogues.length > 0) {
-        ragContext += `Diálogos que você já teve no passado (exemplos de estilo):\n` +
-          relevantDialogues.map(d => `- ${d.user}\n  Você (${personaConfig.name}): "${d.duba}"`).join('\n') + '\n\n';
-      }
-      if (relevantMessages.length > 0) {
-        ragContext += `Coisas reais que você já falou ou viveu:\n` +
-          relevantMessages.map(m => `- "${m}"`).join('\n') + '\n\n';
-      }
+    if (relevantMessages.length > 0) {
+      ragContext = `\n[FATOS & FALAS REAIS DA SUA VIDA - USE EM 1ª PESSOA ("EU")]:\n` +
+        relevantMessages.map(m => `- "${m}"`).join('\n') + '\n\n';
     }
 
     // 4. Memória de Sessão de Curto Prazo persistida
@@ -135,9 +130,16 @@ export async function generatePersonaResponse(
     // 9. DIRETIVA ANTI-REPETIÇÃO E HISTÓRICO DE RESPOSTAS DO PRÓPRIO BOT
     let antiRepetitionBlock = '';
     if (recentBotResponses.length > 0) {
+      let vocabularyVarietyHint = '';
+      const recentBotText = recentBotResponses.slice(0, 4).join(' ').toLowerCase();
+      if (recentBotText.includes('meu vei') && recentBotText.split('meu vei').length > 2) {
+        vocabularyVarietyHint = '• [VARIAÇÃO LÉXICA]: Você já usou "meu vei" nas falas recentes. Evite "meu vei" nesta mensagem; prefira responder sem vocativo, ou use "mano", "caba", "vish", "doidera".\n';
+      }
+
       antiRepetitionBlock = `\n[SUAS ÚLTIMAS RESPOSTAS RECENTES NO CHAT (NÃO REPITA)]:
 ${recentBotResponses.slice(0, 5).map(r => `• "${r}"`).join('\n')}
-[REGRA CRÍTICA DE VARIEDADE]: É PROIBIDO começar a nova mensagem com a mesma frase/gíria das respostas acima ou repetir a mesma piada! Traga um vocabulário novo, outra observação ou um ângulo diferente para enriquecer o diálogo.\n\n`;
+[REGRA CRÍTICA DE VARIEDADE]: É PROIBIDO começar a nova mensagem com a mesma frase/gíria das respostas acima ou repetir a mesma piada! Traga um vocabulário novo, outra observação ou um ângulo diferente para enriquecer o diálogo.
+${vocabularyVarietyHint}\n`;
     }
 
     // 10. Dossiê do Interlocutor (jogos, hábitos e fatos conhecidos sobre a pessoa que está falando)
@@ -146,10 +148,10 @@ ${recentBotResponses.slice(0, 5).map(r => `• "${r}"`).join('\n')}
 
     // 11. Instrução de Síntese Cognitiva (Referência -> Conteúdo -> Texto Final)
     const thinkingInstruction = `
-[PROCESSO DE SÍNTESE COGNITIVA]:
-1. REFERÊNCIA: Aplique estritamente os atributos de estilo do Jinchi (ritmo ultracurto de 1 a 3 linhas, 100% minúsculas, vocabulário nativo, ausência de pontuação formal e postura despojada de sofá).
-2. CONTEÚDO: Use exclusivamente o contexto da conversa, mídias recebidas e memórias fornecidas como o assunto central. NUNCA invente fatos fora do escopo ou fuja do tema.
-3. TEXTO FINAL: Crie uma resposta original que comunique o CONTEÚDO de forma impecável, parecendo ter sido escrita pela mente real do Jinchi no sofá. Envie APENAS a fala final em minúsculas, sem prefixos ou explicações.
+[PROCESSO DE SÍNTESE]:
+1. ESTILO: Envie APENAS a fala final em minúsculas (1 linha curta para saudações/zoeiras/mídias; 1 a 3 linhas curtas para opiniões/fatos).
+2. ANTI-ASSISTENTE: NUNCA dê explicações longas, tutoriais ou inicie com conectivos de IA ("ah,", "olha,", "pois é,", "entendi,", "com certeza,"). Seja de sofá, despojado e preguiçoso.
+3. CONTEÚDO: Responda diretamente ao interlocutor com base no contexto, sem inventar fatos fora da sua vida.
 `.trim();
 
     // 12. Instrução Específica para Mídias (Vídeos, Fotos e Links)
@@ -184,7 +186,8 @@ O usuário enviou um link no chat. Reaja de forma espontânea, sarcástica, desc
     }
 
     const defaultPrompt = hasVideos ? 'olha esse vídeo' : (hasImages ? 'olha essa imagem' : 'olha isso');
-    const fullPromptText = `[CONTEÚDO & CONTEXTO DA CONVERSA]:\n${temporalContext}\n${sessionBlock}${episodicBlock}${memberDossierBlock}${urlBlock}${ragContext}${antiRepetitionBlock}${contextText}${repliedBlock}${realJinchiNotice}${mediaInstruction}\n\nMensagem/Situação atual para responder:\n"${userPrompt || defaultPrompt}"\n\n${thinkingInstruction}`;
+    const userMessageContent = userPrompt || defaultPrompt;
+    const fullPromptText = `[CONTEÚDO & CONTEXTO DA CONVERSA]:\n${temporalContext}\n${sessionBlock}${episodicBlock}${memberDossierBlock}${urlBlock}${ragContext}${antiRepetitionBlock}${contextText}${repliedBlock}${realJinchiNotice}${mediaInstruction}\n\n<user_message author="${targetAuthor}">\n${userMessageContent}\n</user_message>\n\n${thinkingInstruction}`;
 
     // Monta o payload multimodal se houver imagens ou vídeos
     const contentsPayload = [];
@@ -200,19 +203,51 @@ O usuário enviou um link no chat. Reaja de forma espontânea, sarcástica, desc
     }
     contentsPayload.push(fullPromptText);
 
-    const temperature = typeof config.gemini.temperature === 'number' ? config.gemini.temperature : 0.80;
+    const temperature = typeof config.gemini.temperature === 'number' ? config.gemini.temperature : 1.0;
 
-    const response = await ai.models.generateContent({
-      model: config.gemini.model,
-      contents: contentsPayload,
-      config: {
-        systemInstruction,
-        temperature,
-        topP: 0.90,
-        topK: 40,
-        maxOutputTokens: config.gemini.maxTokens
+    const safetySettings = [
+      { category: 'HARM_CATEGORY_HARASSMENT', threshold: 'BLOCK_NONE' },
+      { category: 'HARM_CATEGORY_HATE_SPEECH', threshold: 'BLOCK_ONLY_HIGH' },
+      { category: 'HARM_CATEGORY_SEXUALLY_EXPLICIT', threshold: 'BLOCK_ONLY_HIGH' },
+      { category: 'HARM_CATEGORY_DANGEROUS_CONTENT', threshold: 'BLOCK_ONLY_HIGH' }
+    ];
+
+    const generateConfig = {
+      systemInstruction,
+      temperature,
+      topP: 0.95,
+      topK: 64,
+      maxOutputTokens: config.gemini.maxTokens,
+      safetySettings,
+      thinkingConfig: {
+        thinkingBudget: 0
       }
-    });
+    };
+
+    let response = null;
+    try {
+      response = await ai.models.generateContent({
+        model: config.gemini.model,
+        contents: contentsPayload,
+        config: generateConfig
+      });
+    } catch (primaryErr) {
+      if (config.gemini.fallbackModel && config.gemini.fallbackModel !== config.gemini.model) {
+        console.warn(`⚠️ [AI Service] Falha no modelo primário (${config.gemini.model}): ${primaryErr.message}. Tentando fallback (${config.gemini.fallbackModel})...`);
+        try {
+          response = await ai.models.generateContent({
+            model: config.gemini.fallbackModel,
+            contents: contentsPayload,
+            config: generateConfig
+          });
+        } catch (fallbackErr) {
+          console.error(`💥 [AI Service] Fallback (${config.gemini.fallbackModel}) também falhou:`, fallbackErr.message);
+          throw fallbackErr;
+        }
+      } else {
+        throw primaryErr;
+      }
+    }
 
     const text = response.text?.trim();
 
@@ -252,12 +287,14 @@ export function cleanAiResponse(text) {
     .replace(/<thought>[\s\S]*?<\/thought>/gi, '')
     .replace(/\[pensamento\][\s\S]*?\[\/pensamento\]/gi, '')
     .replace(/<thinking>[\s\S]*?<\/thinking>/gi, '')
+    .replace(/\*?\s*(?:drafting ideas|thinking|thoughts|raciocínio|ideias)[:\s][\s\S]*?(?=\n\n|\n[a-z0-9]|$)/gi, '')
     .replace(/```(?:html|json|markdown|txt)?[\s\S]*?```/gi, '')
     // 2. Remove tags HTML/XML comuns (div, p, span, br, etc.)
     .replace(/<\/?(?:div|p|span|b|i|u|a|br|hr|h[1-6]|pre|code|table|tr|td|th|ul|ol|li|strong|em|img|blockquote|section|article|header|footer|nav|aside|main|figure|figcaption|video|audio|source|iframe|embed|object|param|canvas|svg|math|form|input|button|select|option|textarea|label|fieldset|legend|details|summary|dialog|script|style|meta|link|head|body|html|thought|thinking|output|response|answer)[^>]*>/gi, '')
     // 3. Remove qualquer outra tag XML/HTML que não seja menção ou emoji nativo do Discord (<@...>, <#...>, <:emoji:...>)
     .replace(/<(?!\/?(?:@[!&]?\d+|#\d+|a?:[a-zA-Z0-9_~]+:\d+|t:\d+(?::[a-zA-Z])?))[^>]+>/g, '')
-    // 4. Remove aspas externas e prefixos
+    // 4. Remove bullets, aspas externas e prefixos
+    .replace(/^[\s*•\-]+/, '')
     .replace(/^["']|["']$/g, '')
     .replace(/^(?:jinchi|dubinha|duba|bot):\s*/i, '')
     .toLowerCase()

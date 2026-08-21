@@ -7,6 +7,7 @@ import { trackMemberActivity, getAllActiveSessionSummaries } from '../services/s
 import { inspectLiveFact } from '../services/episodicMemory.js';
 import { extractUrlContext, extractMediaUrlsFromText, isMediaUrl } from '../utils/urlHelper.js';
 import { enqueueCognitiveInspection, reinforceSuccessfulDialogue } from '../services/cognitiveLearning.js';
+import { optimizeImageForGemini } from '../utils/imageOptimizer.js';
 
 export const name = Events.MessageCreate;
 export const once = false;
@@ -16,14 +17,14 @@ const channelStats = new Map();
 const processingMessages = new Set();
 
 export async function execute(message) {
-  // Ignora mensagens de outros bots ou do próprio bot
-  if (message.author.bot) return;
+  // Ignora mensagens de outros bots, do próprio bot ou mensagens diretas (DMs)
+  if (message.author.bot || !message.guild) return;
 
   // Evita processamento duplo da mesma mensagem
   if (processingMessages.has(message.id)) return;
   processingMessages.add(message.id);
 
-  // Limpa o ID do set após 15 segundos
+  // Limpa o ID do set após 15 segundos mantendo o Set pequeno
   setTimeout(() => processingMessages.delete(message.id), 15000);
 
   const authorName = message.author.displayName || message.author.username;
@@ -186,12 +187,23 @@ export async function execute(message) {
             if (res.ok) {
               const arrayBuffer = await res.arrayBuffer();
               if (arrayBuffer.byteLength <= 25 * 1024 * 1024) { // Limite seguro de 25MB
-                const mimeType = att.contentType || (isVideo ? 'video/mp4' : 'image/jpeg');
-                mediaBuffers.push({
-                  data: Buffer.from(arrayBuffer).toString('base64'),
-                  mimeType,
-                  isVideo
-                });
+                const rawBuffer = Buffer.from(arrayBuffer);
+                if (isImage) {
+                  const optimized = await optimizeImageForGemini(rawBuffer, 1280);
+                  if (optimized) {
+                    mediaBuffers.push({
+                      data: optimized.data,
+                      mimeType: optimized.mimeType,
+                      isVideo: false
+                    });
+                  }
+                } else {
+                  mediaBuffers.push({
+                    data: rawBuffer.toString('base64'),
+                    mimeType: att.contentType || 'video/mp4',
+                    isVideo: true
+                  });
+                }
                 console.log(`🎬 [Visão Multimodal - Anexo ${isVideo ? 'Vídeo' : 'Foto'}] Baixado de @${authorName} (${(arrayBuffer.byteLength / 1024 / 1024).toFixed(2)} MB)`);
               }
             }
@@ -219,12 +231,23 @@ export async function execute(message) {
             if (res.ok) {
               const arrayBuffer = await res.arrayBuffer();
               if (arrayBuffer.byteLength <= 25 * 1024 * 1024) {
-                const mimeType = res.headers.get('content-type') || item.mimeType || (item.isVideo ? 'video/mp4' : 'image/jpeg');
-                mediaBuffers.push({
-                  data: Buffer.from(arrayBuffer).toString('base64'),
-                  mimeType,
-                  isVideo: item.isVideo
-                });
+                const rawBuffer = Buffer.from(arrayBuffer);
+                if (!item.isVideo) {
+                  const optimized = await optimizeImageForGemini(rawBuffer, 1280);
+                  if (optimized) {
+                    mediaBuffers.push({
+                      data: optimized.data,
+                      mimeType: optimized.mimeType,
+                      isVideo: false
+                    });
+                  }
+                } else {
+                  mediaBuffers.push({
+                    data: rawBuffer.toString('base64'),
+                    mimeType: res.headers.get('content-type') || item.mimeType || 'video/mp4',
+                    isVideo: true
+                  });
+                }
                 console.log(`🎬 [Visão Multimodal - URL ${item.isVideo ? 'Vídeo' : 'Foto'}] Baixado de @${authorName} (${(arrayBuffer.byteLength / 1024 / 1024).toFixed(2)} MB)`);
               }
             }

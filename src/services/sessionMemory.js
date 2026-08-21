@@ -76,6 +76,11 @@ export function trackMemberActivity(userId, authorName, text) {
   const clean = text.trim();
   if (clean.length < 3) return;
 
+  // Filtra risadas puras e saudações/monossílabos secos para não poluir a memória
+  const isPureLaughter = /^[khrsa\s.,!?]+$/i.test(clean);
+  const isGenericGreeting = /^(oi|ola|salve|eai|e ai|eae|blz|opa|flw|vlw|sim|nao|não|aham)$/i.test(clean);
+  if (isPureLaughter || isGenericGreeting) return;
+
   let session = memberSessions.get(userId);
   if (!session) {
     session = {

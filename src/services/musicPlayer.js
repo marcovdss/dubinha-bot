@@ -7,7 +7,7 @@ import {
   entersState,
   StreamType
 } from '@discordjs/voice';
-import { ActionRowBuilder, ButtonBuilder, ButtonStyle, EmbedBuilder } from 'discord.js';
+import { ActionRowBuilder, ButtonBuilder, ButtonStyle, EmbedBuilder, PermissionFlagsBits } from 'discord.js';
 import { execFile, spawn } from 'child_process';
 import ffmpegPath from 'ffmpeg-static';
 import yts from 'yt-search';
@@ -507,6 +507,23 @@ async function getTrackAudioProcess(track) {
 }
 
 /**
+ * Destrói subprocessos e streams ativas de áudio de uma fila com segurança
+ * @param {object} queue
+ */
+function destroyQueueProcesses(queue) {
+  if (!queue) return;
+  if (queue.activeProcess) {
+    try {
+      queue.activeProcess.stdout?.destroy();
+      queue.activeProcess.stderr?.destroy();
+      queue.activeProcess.stdin?.destroy();
+      queue.activeProcess.kill('SIGKILL');
+    } catch {}
+    queue.activeProcess = null;
+  }
+}
+
+/**
  * Toca a próxima música da fila da Guild
  * @param {string} guildId
  * @param {boolean} isAutoAdvance
@@ -517,6 +534,7 @@ async function playNextInQueue(guildId, isAutoAdvance = false) {
 
   if (queue.songs.length === 0) {
     console.log(`🎵 [Music Player] Fila vazia em: ${guildId}. Desconectando...`);
+    destroyQueueProcesses(queue);
     if (queue.connection) {
       try { queue.connection.destroy(); } catch {}
     }
@@ -529,10 +547,7 @@ async function playNextInQueue(guildId, isAutoAdvance = false) {
   queue.currentTrack = currentTrack;
 
   try {
-    if (queue.activeProcess) {
-      try { queue.activeProcess.kill(); } catch {}
-      queue.activeProcess = null;
-    }
+    destroyQueueProcesses(queue);
 
     const { process: audioProcess, title: finalTitle } = await getTrackAudioProcess(currentTrack);
     queue.activeProcess = audioProcess;
@@ -560,6 +575,7 @@ async function playNextInQueue(guildId, isAutoAdvance = false) {
     await updateVirtualDisplay(guildId);
   } catch (err) {
     console.error(`💥 [Music Player Error ao tocar faixa]:`, err.message);
+    destroyQueueProcesses(queue);
     queue.songs.shift();
     await playNextInQueue(guildId, isAutoAdvance);
   }
@@ -591,7 +607,7 @@ export async function addMusicToQueue(interaction, query) {
   }
 
   const permissions = voiceChannel.permissionsFor(interaction.client.user);
-  if (!permissions.has('Connect') || !permissions.has('Speak')) {
+  if (!permissions || !permissions.has(PermissionFlagsBits.Connect) || !permissions.has(PermissionFlagsBits.Speak)) {
     return {
       success: false,
       message: `não tenho permissão pra entrar ou falar na sala ${voiceChannel.name} não mano`
@@ -636,20 +652,48 @@ export async function addMusicToQueue(interaction, query) {
         currentTrack: null,
         isPlaying: false,
         isPaused: false,
-        activeProcess: null
+        activeProcess: null,
+        isAdvancing: false
       };
 
+      // Tratamento de queda ou expulsão da sala de voz
+      connection.on(VoiceConnectionStatus.Disconnected, async () => {
+        try {
+          await Promise.race([
+            entersState(connection, VoiceConnectionStatus.Signalling, 5_000),
+            entersState(connection, VoiceConnectionStatus.Connecting, 5_000)
+          ]);
+        } catch {
+          destroyQueueProcesses(queue);
+          try { connection.destroy(); } catch {}
+          queues.delete(guildId);
+          console.log(`🔌 [Music Player] Conexão perdida permanentemente na guild ${guildId}. Fila destruída.`);
+        }
+      });
+
       player.on(AudioPlayerStatus.Idle, (oldState) => {
-        if (oldState.status === AudioPlayerStatus.Playing || oldState.status === AudioPlayerStatus.Buffering) {
+        if (queue.isAdvancing) return;
+        if (
+          oldState.status === AudioPlayerStatus.Playing ||
+          oldState.status === AudioPlayerStatus.Buffering ||
+          oldState.status === AudioPlayerStatus.Paused
+        ) {
+          queue.isAdvancing = true;
           queue.songs.shift(); // Remove a faixa que terminou
-          playNextInQueue(guildId, true);
+          playNextInQueue(guildId, true).finally(() => {
+            queue.isAdvancing = false;
+          });
         }
       });
 
       player.on('error', (error) => {
         console.error('[Player Error]:', error.message);
+        if (queue.isAdvancing) return;
+        queue.isAdvancing = true;
         queue.songs.shift();
-        playNextInQueue(guildId, true);
+        playNextInQueue(guildId, true).finally(() => {
+          queue.isAdvancing = false;
+        });
       });
 
       queues.set(guildId, queue);
@@ -858,13 +902,11 @@ export async function stopMusic(interaction) {
   }
 
   try {
-    if (queue.activeProcess) {
-      try { queue.activeProcess.kill(); } catch {}
-    }
+    destroyQueueProcesses(queue);
     queue.songs = [];
     queue.currentTrack = null;
     queue.player.stop();
-    queue.connection.destroy();
+    try { queue.connection.destroy(); } catch {}
     await updateVirtualDisplay(guildId);
     queues.delete(guildId);
 
@@ -874,6 +916,7 @@ export async function stopMusic(interaction) {
     };
   } catch (error) {
     console.error('[StopMusic Error]:', error);
+    destroyQueueProcesses(queue);
     queues.delete(guildId);
     return {
       success: true,

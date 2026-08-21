@@ -95,14 +95,30 @@ Responda em formato JSON estrito:
 Se não houver nenhum fato ou correção relevante (apenas zoeira comum, risadas, saudações rápidas), retorne "hasNewInfo": false.`;
 
   try {
-    const response = await ai.models.generateContent({
-      model: 'gemini-2.5-flash',
-      contents: [prompt],
-      config: {
-        responseMimeType: 'application/json',
-        temperature: 0.1
+    let response = null;
+    try {
+      response = await ai.models.generateContent({
+        model: config.gemini.model || 'gemini-3.5-flash',
+        contents: [prompt],
+        config: {
+          responseMimeType: 'application/json',
+          temperature: 0.1
+        }
+      });
+    } catch (primaryErr) {
+      if (config.gemini.fallbackModel) {
+        response = await ai.models.generateContent({
+          model: config.gemini.fallbackModel,
+          contents: [prompt],
+          config: {
+            responseMimeType: 'application/json',
+            temperature: 0.1
+          }
+        });
+      } else {
+        throw primaryErr;
       }
-    });
+    }
 
     const text = response.text?.trim();
     if (!text) return;

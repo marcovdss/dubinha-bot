@@ -1,9 +1,10 @@
-import { SlashCommandBuilder } from 'discord.js';
+import { SlashCommandBuilder, PermissionFlagsBits } from 'discord.js';
 import { config, normalizeProbability } from '../../config/env.js';
 
 export const data = new SlashCommandBuilder()
   .setName('introsa')
   .setDescription('Regula ou exibe a chance do Dubinha se intrometer nas conversas (Modo Introsa)')
+  .setDefaultMemberPermissions(PermissionFlagsBits.ManageGuild)
   .addStringOption(option =>
     option
       .setName('chance')

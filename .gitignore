@@ -1,8 +1,12 @@
 node_modules/
 .env
-.env.*
+.env.local
+.env.*.local
+data/*.bak
+data/*.tmp.*
+data/test_*
+bin/*.exe
+bin/*.zip
 *.log
-bin/
 .DS_Store
-*.bak
-
+Thumbs.db

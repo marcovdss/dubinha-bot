@@ -36,10 +36,12 @@ export async function execute(interaction) {
       ephemeral: true
     };
 
-    if (interaction.replied || interaction.deferred) {
-      await interaction.followUp(replyContent);
-    } else {
-      await interaction.reply(replyContent);
-    }
+    try {
+      if (interaction.replied || interaction.deferred) {
+        await interaction.followUp(replyContent).catch(() => null);
+      } else {
+        await interaction.reply(replyContent).catch(() => null);
+      }
+    } catch {}
   }
 }

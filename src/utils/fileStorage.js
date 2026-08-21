@@ -9,6 +9,26 @@ import path from 'node:path';
 const fileLocks = new Map();
 
 /**
+ * Valida se uma string é um JSON estruturado válido
+ * @param {string} content
+ * @returns {boolean}
+ */
+export function isValidJson(content) {
+  if (!content || typeof content !== 'string') return false;
+  const trimmed = content.trim();
+  if (trimmed.length < 2) return false;
+  if (!((trimmed.startsWith('{') && trimmed.endsWith('}')) || (trimmed.startsWith('[') && trimmed.endsWith(']')))) {
+    return false;
+  }
+  try {
+    JSON.parse(trimmed);
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+/**
  * Lê um arquivo JSON de forma segura com fallback para backup (.bak) se o principal estiver corrompido
  * @param {string} filePath - Caminho absoluto para o arquivo
  * @param {any} defaultValue - Valor padrão retornado caso o arquivo não exista ou esteja corrompido
@@ -31,15 +51,22 @@ export function readJsonSafe(filePath, defaultValue = {}) {
     }
   }
 
-  // 2. Fallback de recuperação automática a partir do .bak
+  // 2. Fallback de recuperação automática a partir do .bak (apenas se for válido)
   if (fs.existsSync(bakPath)) {
     try {
       const bakContent = fs.readFileSync(bakPath, 'utf-8');
-      if (bakContent && bakContent.trim().length > 0) {
+      if (isValidJson(bakContent)) {
         const recovered = JSON.parse(bakContent);
         console.log(`✅ [FileStorage] Backup recuperado com sucesso para "${filePath}"!`);
-        // Restaura o arquivo principal
-        writeJsonAtomic(filePath, recovered);
+        // Restaura o arquivo principal com segurança
+        const tmpPath = `${filePath}.tmp.${process.pid}_${Date.now()}`;
+        fs.writeFileSync(tmpPath, JSON.stringify(recovered, null, 2), 'utf-8');
+        try {
+          fs.renameSync(tmpPath, filePath);
+        } catch {
+          fs.copyFileSync(tmpPath, filePath);
+          try { fs.unlinkSync(tmpPath); } catch {}
+        }
         return recovered;
       }
     } catch (bakErr) {
@@ -51,7 +78,7 @@ export function readJsonSafe(filePath, defaultValue = {}) {
 }
 
 /**
- * Grava dados em arquivo JSON de forma 100% atômica com criação de backup de segurança (.bak)
+ * Grava dados em arquivo JSON de forma 100% atômica garantindo que o .bak só seja atualizado com JSONs íntegros
  * @param {string} filePath - Caminho absoluto para o arquivo de destino
  * @param {any} data - Dados a serem serializados em JSON
  * @returns {boolean}
@@ -73,10 +100,13 @@ export function writeJsonAtomic(filePath, data) {
     // 1. Grava no arquivo temporário único
     fs.writeFileSync(tmpPath, jsonString, 'utf-8');
 
-    // 2. Garante snapshot de backup de segurança (.bak)
+    // 2. Garante snapshot de backup (.bak) apenas se o arquivo atual for válido
     if (fs.existsSync(filePath)) {
       try {
-        fs.copyFileSync(filePath, bakPath);
+        const currentContent = fs.readFileSync(filePath, 'utf-8');
+        if (isValidJson(currentContent)) {
+          fs.copyFileSync(filePath, bakPath);
+        }
       } catch (copyErr) {}
     } else {
       try {

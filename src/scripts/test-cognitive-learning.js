@@ -1,3 +1,4 @@
+import 'dotenv/config';
 import { getMemberProfile, addMemberFact, addMemberGame, formatMemberDossierForPrompt } from '../services/memberProfiles.js';
 import { reinforceSuccessfulDialogue } from '../services/cognitiveLearning.js';
 import { generatePersonaResponse } from '../services/ai.js';

@@ -1,3 +1,4 @@
+import 'dotenv/config';
 import { searchKnowledgeBase } from '../services/rag.js';
 import { getEpisodicMemories } from '../services/episodicMemory.js';
 import { trackMemberActivity, getMemberSessionSummary, getAllActiveSessionSummaries } from '../services/sessionMemory.js';

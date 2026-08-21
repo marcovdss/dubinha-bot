@@ -1,7 +1,13 @@
 node_modules
-.env
 .git
-bin
+.gitignore
+.env
+.env.local
+data/*.bak
+data/*.tmp.*
+data/test_*
+bin/*.exe
+bin/*.zip
 *.log
-*.tmp*
-.agents
+.DS_Store
+Thumbs.db

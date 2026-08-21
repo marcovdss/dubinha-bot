@@ -1,3 +1,5 @@
+import { isSafeUrl } from './imageOptimizer.js';
+
 /**
  * Utilitário avançado para extração rápida de títulos, metadados e URLs de mídia (vídeo/imagem) de links compartilhados no chat
  */
@@ -49,6 +51,7 @@ export function cleanHtmlEntities(str) {
  */
 async function fetchYouTubeOEmbed(rawUrl) {
   try {
+    if (!(await isSafeUrl(rawUrl))) return null;
     const oEmbedUrl = `https://www.youtube.com/oembed?url=${encodeURIComponent(rawUrl)}&format=json`;
     const res = await fetch(oEmbedUrl, {
       headers: COMMON_HEADERS,
@@ -74,6 +77,7 @@ async function fetchYouTubeOEmbed(rawUrl) {
  */
 async function fetchTwitterData(rawUrl) {
   try {
+    if (!(await isSafeUrl(rawUrl))) return null;
     const match = rawUrl.match(/(?:twitter\.com|x\.com|fixvx\.com|vxtwitter\.com|fxtwitter\.com|fixupx\.com)\/([^/]+)\/status\/(\d+)/i);
     if (!match) return null;
 
@@ -126,6 +130,8 @@ async function fetchTwitterData(rawUrl) {
 async function scrapeOpenGraph(rawUrl) {
   const result = { title: '', desc: '', mediaUrls: [] };
   try {
+    if (!(await isSafeUrl(rawUrl))) return result;
+
     // Transforma links de Instagram e TikTok para proxies amigáveis para obter OpenGraph
     let targetUrl = rawUrl;
     if (/instagram\.com\/p\/|instagram\.com\/reel\//i.test(rawUrl)) {
@@ -141,7 +147,7 @@ async function scrapeOpenGraph(rawUrl) {
 
     if (!response.ok) return result;
 
-    const html = await response.text();
+    const html = (await response.text()).slice(0, 512 * 1024);
 
     const titleMatch = html.match(/<meta[^>]*property=["']og:title["'][^>]*content=["']([^"']+)["']/i) ||
                       html.match(/<title[^>]*>([^<]+)<\/title>/i);

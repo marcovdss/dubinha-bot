@@ -1,6 +1,6 @@
 import fs from 'node:fs';
 import path from 'node:path';
-import { fileURLToPath } from 'node:url';
+import { fileURLToPath, pathToFileURL } from 'node:url';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -18,7 +18,7 @@ export async function registerEvents(client) {
 
   for (const file of eventFiles) {
     const filePath = path.join(eventsPath, file);
-    const fileUrl = new URL(`file://${filePath}`).href;
+    const fileUrl = pathToFileURL(filePath).href;
 
     try {
       const event = await import(fileUrl);
@@ -27,10 +27,18 @@ export async function registerEvents(client) {
         continue;
       }
 
+      const handler = async (...args) => {
+        try {
+          await event.execute(...args);
+        } catch (err) {
+          console.error(`❌ Erro não tratado no evento "${event.name}":`, err);
+        }
+      };
+
       if (event.once) {
-        client.once(event.name, (...args) => event.execute(...args));
+        client.once(event.name, handler);
       } else {
-        client.on(event.name, (...args) => event.execute(...args));
+        client.on(event.name, handler);
       }
 
       console.log(`⚡ [Evento Registrado]: ${event.name}`);
